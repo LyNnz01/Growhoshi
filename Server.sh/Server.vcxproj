@@ -189,6 +189,7 @@
     <ClInclude Include="Packet.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="SaveSystem.h" />
     <ClInclude Include="Webhook.h" />
     <ClInclude Include="World.h" />
   </ItemGroup>

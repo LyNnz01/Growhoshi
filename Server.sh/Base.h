@@ -1,4 +1,5 @@
 ﻿#pragma once
+bool Harvest_Festival = false, Halloween = false, Thanksgiving = false, December = true, Winterfest = false;
 using json = nlohmann::json;
 BYTE* item_data;
 int item_hash, item_data_size;
@@ -720,29 +721,34 @@ int get_punch_id(const int id_) {
 	case 5424:
 	case 5456:
 	case 4136:
+	case 10052:
 		return 4;
 	case 768: return 5;
 	case 900:
 	case 7760:
 	case 9272:
+	case 5002:
 	case 7758:
 		return 6;
-	case 910: return 7;
+	case 910:
+	case 4332:
+		return 7;
 	case 930:
 	case 1010:
 	case 6382:
 		return 8;
-	case 1016: return 9;
+	case 1016:
+	case 6058:
+		return 9;
 	case 1204:
 	case 9534:
-	case 9804:
 		return 10;
-	case 9766: return 218;
-	case 9546: return 218;
 	case 1378: return 11;
 	case 1440: return 12;
 	case 1484:
 	case 5160:
+	case 9802:
+	case 9882:
 		return 13;
 	case 1512:
 	case 1648:
@@ -768,6 +774,9 @@ int get_punch_id(const int id_) {
 	case 1780: return 20;
 	case 1782:
 	case 5156:
+	case 9776:
+	case 9782:
+	case 9810:
 		return 21;
 	case 1804:
 	case 5194:
@@ -785,25 +794,26 @@ int get_punch_id(const int id_) {
 		return 26;
 	case 1956: return 27;
 	case 1960: return 28;
-		return 153;
+	case 2908:
+	case 6312:
+	case 9496:
 	case 8554:
 	case 3162:
 	case 9536:
-	case 6312:
 	case 4956:
 	case 3466:
 	case 4166:
 	case 4506:
 	case 2952:
 	case 9520:
+	case 9522:
 	case 8440:
-	case 2908:
 	case 3932:
-	case 8584:
-	case 3160:
 	case 3934:
 	case 8732:
 	case 3108:
+	case 9766:
+	case 12368:
 		return 29;
 	case 1980: return 30;
 	case 2066:
@@ -813,6 +823,10 @@ int get_punch_id(const int id_) {
 	case 11078:
 		return 31;
 	case 2212:
+	case 5174:
+	case 5004:
+	case 5006:
+	case 5008:
 		return 32;
 	case 2218: return 33;
 	case 2220: return 34;
@@ -823,17 +837,24 @@ int get_punch_id(const int id_) {
 		return 38;
 	case 2476:
 	case 4208:
+	case 12308:
 	case 10336:
+	case 9804:
 		return 39;
-	case 4748: return 40;
-	case 2512: return 41;
+	case 4748:
+	case 4294:
+		return 40;
+	case 2512:
+	case 9732:
+	case 6338:
+		return 41;
 	case 2572: return 42;
 	case 2592:
-	case 9800:
 	case 9396:
-	case 9496:
-	case 9548:
 	case 2596:
+	case 9548:
+	case 9812:
+	case 9880:
 		return 43;
 	case 2720: return 44;
 	case 2752: return 45;
@@ -847,6 +868,7 @@ int get_punch_id(const int id_) {
 		return 52;
 	case 2906:
 	case 4170:
+	case 4278:
 		return 53;
 	case 2886: return 54;
 	case 2890: return 55;
@@ -882,9 +904,10 @@ int get_punch_id(const int id_) {
 		return 77;
 	case 4840: return 78;
 	case 5206: return 79;
-	case 5480: return 80;
-	case 9770: return 80;
-	case 9772: return 80;
+	case 5480:
+	case 9770:
+	case 9772:
+		return 80;
 	case 6110: return 81;
 	case 6308: return 82;
 	case 6310: return 83;
@@ -898,7 +921,6 @@ int get_punch_id(const int id_) {
 		return 89;
 	case 7098:
 	case 9032:
-	case 9802:
 		return 90;
 	case 7192: return 91;
 	case 7136:
@@ -909,7 +931,9 @@ int get_punch_id(const int id_) {
 	case 7196:
 	case 9340:
 		return 95;
-	case 7392: return 96;
+	case 7392:
+	case 9604:
+		return 96;
 	case 7384: return 98;
 	case 7414: return 99;
 	case 7402: return 100;
@@ -918,9 +942,15 @@ int get_punch_id(const int id_) {
 	case 7488: return 103;
 	case 7586:
 	case 7646:
+	case 9778:
+	case 9884:
+	case 9886:
+	case 9888:
 		return 104;
 	case 7650: return 105;
-	case 6804: return 106;
+	case 6804:
+	case 6358:
+		return 106;
 	case 7568:
 	case 7570:
 	case 7572:
@@ -930,6 +960,8 @@ int get_punch_id(const int id_) {
 	case 7660:
 	case 9060:
 		return 109;
+	case 7584:
+		return 110;
 	case 7736:
 	case 9116:
 	case 9118:
@@ -942,7 +974,6 @@ int get_punch_id(const int id_) {
 	case 7832:
 	case 10670:
 	case 9120:
-	case 8492:
 	case 9122:
 	case 10680:
 	case 10626:
@@ -953,6 +984,8 @@ int get_punch_id(const int id_) {
 	case 7912:
 	case 11298:
 	case 10498:
+	case 12342:
+	case 9758:
 		return 111;
 	case 7836:
 	case 7838:
@@ -967,7 +1000,6 @@ int get_punch_id(const int id_) {
 	case 8372:
 		return 119;
 	case 8038: return 120;
-	case 8358: return 121;
 	case 8816:
 	case 8818:
 	case 8820:
@@ -983,7 +1015,7 @@ int get_punch_id(const int id_) {
 	case 8436:
 	case 8950:
 		return 132;
-	case 8946: return 133;
+	case 8946: case 9576: return 133;
 	case 8960: return 134;
 	case 9006: return 135;
 	case 9058: return 136;
@@ -996,12 +1028,11 @@ int get_punch_id(const int id_) {
 	case 9138:
 		return 140;
 	case 9172: return 141;
-	case 9190: return 142;
 	case 9254: return 143;
 	case 9256: return 144;
 	case 9236: return 145;
 	case 9342: return 146;
-		//case 9326: return 147;
+	case 9542: return 147;
 	case 9378: return 148;
 	case 9376: return 149;
 	case 9410: return 150;
@@ -1011,21 +1042,27 @@ int get_punch_id(const int id_) {
 	case 9716:
 	case 5192:
 		return 153;
+	case 10044:
+		return 166;
+	case 10048: return 167;
 	case 10064: return 168;
 	case 10046: return 169;
 	case 10050: return 170;
 	case 10128: return 171;
-	case 10210: return 172;
+	case 10210:
+	case 9544:
+		return 172;
 	case 10330: return 178;
 	case 10398: return 179;
 	case 10388:
 	case 9524:
+	case 9598:
 		return 180;
 	case 10442: return 184;
 	case 10506: return 185;
 	case 10652: return 188;
 	case 10676: return 191;
-		//case 12246: return 192;
+	case 10674: return 192;
 	case 10694: return 193;
 	case 10714: return 194;
 	case 10724: return 195;
@@ -1036,11 +1073,8 @@ int get_punch_id(const int id_) {
 	case 10886:
 	case 11308:
 		return 200;
-	case 10890:
-	case 10402:
-		return 202;
-	case 10922: return 203;
-	case 10914: return 204;
+	case 10890: return 202;
+	case 10922: case 9550: return 203;
 	case 10990: return 205;
 	case 10998: return 206;
 	case 10952: return 207;
@@ -1049,12 +1083,17 @@ int get_punch_id(const int id_) {
 	case 11046: return 210;
 	case 11052: return 211;
 	case 10960: return 212;
-	case 10956: return 213;
+	case 10956:
+	case 9774:
+		return 213;
 	case 10958: return 214;
 	case 10954: return 215;
 	case 11076: return 216;
 	case 11084: return 217;
-	case 11118: return 218;
+	case 11118:
+	case 9546:
+	case 9574:
+		return 218;
 	case 11120: return 219;
 	case 11116: return 220;
 	case 11158: return 221;
@@ -1062,7 +1101,10 @@ int get_punch_id(const int id_) {
 	case 11142: return 223;
 	case 11232: return 224;
 	case 11140: return 225;
-	case 11248: return 226;
+	case 11248:
+	case 9596:
+	case 9636:
+		return 226;
 	case 11240: return 227;
 	case 11250: return 228;
 	case 11284: return 229;
@@ -1073,51 +1115,89 @@ int get_punch_id(const int id_) {
 	case 11354: return 236;
 	case 11760:
 	case 11464:
-	case 9450:
 	case 11438:
+	case 12230:
 	case 11716:
 	case 11718:
-	case 11710:
 	case 11674:
-	case 11994:
 	case 11630:
-	case 11622:
-	case 12862:
-	case 12402:
 	case 11786:
 	case 11872:
-	case 12022:
-	case 12246:
-	case 12412:
-	case 12404:
-	case 12248:
-	case 12176:
-	case 12870:
-		return 237;
-	case 11814:
-		return 241;
-	case 11548:
-	case 11552:
-		return 242;
+	case 11762:
+	case 11994:
+	case 12172:
+	case 12184:
+	case 11460:
 	case 12014:
 	case 12016:
 	case 12018:
 	case 12020:
+	case 12022:
+	case 12024:
+	case 12246:
+	case 12248:
+	case 12176:
+	case 12242:
+	case 11622:
+	case 12350:
+	case 12300:
+	case 12374:
+	case 12356:
+	case 12628:
+	case 12402:
+	case 12404:
+	case 12410:
+	case 12412:
+	case 12416:
+	case 12420:
+	case 12658:
+	case 12846:
+	case 12850:
+	case 12860:
+	case 12862:
+	case 12870:
 		return 237;
+	case 11814:
+	case 12232:
+	case 12302:
+	case 12872:
+	case 12874:
+	case 12958:
+		return 241;
+	case 11548:
+	case 11552:
+		return 242;
+	case 11704:
+	case 11706:
+		return 243;
+	case 12180:
+	case 12346:
+	case 12344:
+		return 244;
 	case 11506:
 	case 11508:
 	case 11562:
-	case 11704:
-	case 11706:
 	case 11768:
 	case 11882:
+	case 11720:
+	case 11884:
 		return 245;
+	case 12432:
+	case 12434:
+	case 12640:
+	case 12842:
+		return 246;
 	case 11818:
 	case 11876:
+	case 12000:
+	case 12240:
+	case 12642:
+	case 12644:
 		return 248;
 	}
 	return 0;
 }
+
 string to_lower(string s) {
 	for (char& c : s)
 		c = tolower(c);
@@ -1268,6 +1348,9 @@ int items_dat() {
 		else if (def.actionType == 125) {
 			def.mag_multiple = 1;
 		}
+		else if (def.actionType == -115) {
+			def.kranken = 1;
+		}
 		memPos += 1;
 		def.hitSoundType = data[memPos];
 		memPos += 1;
@@ -1399,8 +1482,7 @@ int items_dat() {
 		if (itemsdatVersion >= 14) memPos += 4;
 		if (i != def.id) return -1;
 		string category = getItemCategory(def.actionType, def.name);
-		if (def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 101 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 92 || def.actionType == 91 || def.actionType == 89 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 54 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
-		if (def.actionType == -115) def.kranken = 1;
+		if (def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 92 || def.actionType == 91 || def.actionType == 89 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
 		if (def.id == 10258) def.blocked_place = true;
 		if (def.id == 3832 || def.id == 6016 || def.id == 1436 || def.id == 8246 || def.id == 10258 || def.id == 2646) def.blocked_place = false;
 		string clothingType_ = "";
@@ -2009,7 +2091,6 @@ int items_dat() {
 			items[i].newdropchance = 5500;
 		}
 
-
 		if (i == 12262) {//pearl chest
 			items[i].noob_item = { {12216, 1} , {12218, 1}, {12220, 5}, {12222, 5} };
 			items[i].rare_item = { {12174, 1}, {12212, 1}, {12208, 1}, {12210, 1}, {12214, 1}, {12562,1 }, {12560,1}, {12558,1}, {12556,1}, {12554,1}, {12552,1}, {12550,1}, {12548,1}, {12546,1} };
@@ -2043,8 +2124,6 @@ int items_dat() {
 		if (i == 11248) items[i].hand_scythe_text = "`2What's cooking? Marshmallow that's what!``";
 		if (i == 10132) items[i].hand_scythe_text = "`2One with nature?``";
 
-
-
 		if (i == 4492)  items[i].zombieprice = 25;
 		if (i == 4494) items[i].zombieprice = 30;
 		if (i == 4482) items[i].zombieprice = 50;
@@ -2056,18 +2135,15 @@ int items_dat() {
 		if (i == 4538 || i == 4464) items[i].zombieprice = 520;
 		if (i == 8950)  items[i].zombieprice = 1305;
 		if (i == 4478) items[i].zombieprice = 2615;
-		if (i == 9500)  items[i].zombieprice = 3000;
 		if (items[i].zombieprice != 0) zombieitem.push_back(make_pair(items[i].zombieprice, i));
 
-		if (i == 1252 || i == 8284) items[i].surgeryprice = 13000;
-		if (i == 1274) items[i].surgeryprice = 1300;
-		if (i == 3790 || i == 4080 || i == 4990)items[i].surgeryprice = 500;
-		if (i == 4176 || i == 4322 || i == 2976)  items[i].surgeryprice = 200;
-		if (i == 1506 || i == 8954) items[i].surgeryprice = 800;
-		if (i == 10112 || i == 12450) items[i].surgeryprice = 2600;
-		if (i == 1486) items[i].surgeryprice = 100;
+		if (i == 8284) items[i].surgeryprice = 1000;
+		if (i == 3790 || i == 4080 || i == 4990)items[i].surgeryprice = 30;
+		if (i == 4176 || i == 4322 || i == 2976 || i == 1274)  items[i].surgeryprice = 20;
+		if (i == 1506 || i == 8954) items[i].surgeryprice = 80;
+		if (i == 10112 || i == 12450) items[i].surgeryprice = 100;
+		if (i == 1486) items[i].surgeryprice = 50;
 		if (items[i].surgeryprice != 0) surgeryitem.push_back(make_pair(items[i].surgeryprice, i));
-
 
 		if (i == 4774) items[i].event_name = "Jungle Blast";
 		if (i == 1396) items[i].event_name = "What's that?";
@@ -2083,14 +2159,12 @@ int items_dat() {
 		if (i == 528) items[i].event_name = "Luck of the Growish";
 		if (i == 4522) items[i].event_name = "Lucky Kitty";
 
-
 		if (i == 2034) items[i].event_total = 15;
 		if (i == 611 || i == 3786) items[i].event_total = 20;
 		if (i == 263 || i == 1396 || i == 4774 || i == 942 || i == 5002 || i == 1636 || i == 2704 || i == 4522)  items[i].event_total = 1;
 		if (i == 1056 || i == 2798) items[i].event_total = 3;
 		if (i == 121) items[i].event_total = 4;
 		if (i == 528) items[i].event_total = 5;
-
 
 		// emojis
 
@@ -2179,35 +2253,15 @@ int items_dat() {
 		if (i == 6026 || i == 11140 || i == 11142)items[i].u_gtwl = 30000;
 		if (items[i].u_gtwl != 0) untradeitem.push_back(make_pair(items[i].u_gtwl, i));
 
-		//opc shp
-		if (i == 9380)  items[i].oprc = 1;
-		if (i == 10394)  items[i].oprc = 2;
-		if (i == 826)  items[i].oprc = 3;
-		if (i == 9286)  items[i].oprc = 4;
-		if (i == 1404)  items[i].oprc = 6;
-		if (i == 9018) items[i].oprc = 8;
-		if (i == 2978)  items[i].oprc = 10;
-		if (i == 3528)  items[i].oprc = 15;
-		if (i == 3104 || i == 11860)  items[i].oprc = 30;
-		if (i == 8908)  items[i].oprc = 35;
-		if (i == 408 || i == 1486)  items[i].oprc = 60;
-		if (i == 2254 || i == 2256 || i == 2258 || i == 2262 || i == 2264 || i == 2260)  items[i].oprc = 65;
-		if (i == 8032)  items[i].oprc = 70;
-		if (i == 1952)  items[i].oprc = 75;
-		if (i == 8942)  items[i].oprc = 80;
-		if (i == 10720)  items[i].oprc = 85;
-		if (i == 1986)  items[i].oprc = 90;
-		if (i == 8046)  items[i].oprc = 105;
-		if (i == 1904)  items[i].oprc = 125;
-		if (i == 738)  items[i].oprc = 130;
-		if (i == 3512)  items[i].oprc = 135;
-		if (i == 11152)  items[i].oprc = 160;
-		if (i == 5650)  items[i].oprc = 240;
-		if (i == 10684)  items[i].oprc = 350;
-		if (i == 8864) items[i].oprc = 400;
-		if (i == 8192) items[i].oprc = 450;
-		if (i == 11662)items[i].oprc = 500;
-		if (i == 11750)  items[i].oprc = 800;
+		//online star hub list
+		if (i == 9380 || i == 7784 || i == 1474 || i == 4604 || i == 4596 || i == 5114)  items[i].oprc = 1;
+		if (i == 5116 || i == 928 || i == 3724 || i == 4582 || i == 4322 || i == 528) items[i].oprc = 2;
+		if (i == 836 || i == 3402 || i == 2306 || i == 3044 || i == 9286 || i == 3240) items[i].oprc = 5;
+		if (i == 2242 || i == 2244 || i == 2246 || i == 3604 || i == 830 || i == 3172) items[i].oprc = 10;
+		if (i == 2248 || i == 2212 || i == 4654 || i == 1486 || i == 2250 || i == 10396) items[i].oprc = 25;
+		if (i == 11036 || i == 10004 || i == 9350 || i == 11860 || i == 10386 || i == 11476) items[i].oprc = 28;
+		if (i == 5078 || i == 5080 || i == 5082 || i == 5084 || i == 7166 || i == 6840) items[i].oprc = 150;
+		if (i == 10424 || i == 10674 || i == 8192 || i == 11748 || i == 12640 || i == 12634) items[i].oprc = 250;
 		if (items[i].oprc != 0) opc_item.push_back(make_pair(items[i].oprc, i));
 
 		// hoshi shop listing
@@ -2216,7 +2270,6 @@ int items_dat() {
 		if (i == 5480) items[i].pwl = 50;
 		if (i == 11118) items[i].pwl = 50;
 		if (items[i].pwl != 0) shop_list += "\nadd_button_with_icon|shop_price_" + to_string(i) + "|" + items[i].name + "|staticBlueFrame|" + to_string(i) + "|";
-
 
 		if (i == 6286 || i == 4516) items[i].box_size = 20;
 		if (i == 6288) items[i].box_size = 40;
@@ -2502,33 +2555,14 @@ int items_dat() {
 	sort(zombieitem.begin(), zombieitem.end());
 	for (int i = 0; i < zombieitem.size(); i++) zombie_list += "\nadd_button_with_icon|zomb_price_" + to_string(zombieitem[i].second) + "|" + setGems(zombieitem[i].first) + "ZB|noflags|" + to_string(zombieitem[i].second) + "||";
 	sort(surgeryitem.begin(), surgeryitem.end());
-	for (int i = 0; i < surgeryitem.size(); i++) surgery_list += "\nadd_button_with_icon|zurg_price_" + to_string(surgeryitem[i].second) + "|" + setGems(surgeryitem[i].first) + "ZB|noflags|" + to_string(surgeryitem[i].second) + "||";
+	for (int i = 0; i < surgeryitem.size(); i++) surgery_list += "\nadd_button_with_icon|zurg_price_" + to_string(surgeryitem[i].second) + "|" + setGems(surgeryitem[i].first) + "CD|noflags|" + to_string(surgeryitem[i].second) + "||";
 	sort(lockeitem.begin(), lockeitem.end());
 	for (int i = 0; i < lockeitem.size(); i++) shop_list2 += "\nadd_button|lock_price_" + to_string(lockeitem[i].second) + "|Buy " + items[lockeitem[i].second].name + " for " + (items[lockeitem[i].second].gtwl > 200 ? to_string(items[lockeitem[i].second].gtwl / 100) : to_string(items[lockeitem[i].second].gtwl)) + " " + (items[lockeitem[i].second].gtwl > 200 ? "Diamond Lock" : "World Locks") + "|noflags|0|0|";
 	sort(untradeitem.begin(), untradeitem.end());
 	for (int i = 0; i < untradeitem.size(); i++) shop_list2_2 += "\nadd_button|locm_price_" + to_string(untradeitem[i].second) + "|Buy " + items[untradeitem[i].second].name + " for " + (items[untradeitem[i].second].u_gtwl > 200 ? to_string(items[untradeitem[i].second].u_gtwl / 100) : to_string(items[untradeitem[i].second].u_gtwl)) + " " + (items[untradeitem[i].second].u_gtwl > 200 ? "Diamond Lock" : "World Locks") + "|noflags|0|0|";
 	sort(opc_item.begin(), opc_item.end());
-	for (int i = 0; i < opc_item.size(); i++) opc_list += "\nadd_button_with_icon|opop_price_" + to_string(opc_item[i].second) + "|" + to_string(opc_item[i].first) + " OPC|noflags|" + to_string(opc_item[i].second) + "||";
+	for (int i = 0; i < opc_item.size(); i++) opc_list += "\nadd_button_with_icon|opop_price_" + to_string(opc_item[i].second) + "|" + setGems(opc_item[i].first) + " Star|staticBlueFrame|" + to_string(opc_item[i].second) + "|";
 	return 0;
-}
-
-int ancientprice(int z) {
-	switch (z) {
-	case 5078: case 5080: case 5084: case 5082: case 7166:
-		return -7;
-	case 5126: case 5144: case 5162: case 5180: case 7168:
-		return -10;
-	case 5128: case 5146: case 5164: case 5182: case 7170:
-		return -14;
-	case 5130: case 5148: case 5166: case 5184: case 7172:
-		return -19;
-	case 5132: case 5150: case 5168: case 5186: case 7174:
-		return -25;
-	case 5134: case 5152: case 5170: case 5188: case 9212:
-		return 0; // max level reached
-	default:
-		return 0;
-	}
 }
 
 string replace_str2(string str, const string& from, const string& to) {

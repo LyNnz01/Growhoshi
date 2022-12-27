@@ -11,11 +11,37 @@
 #include "Packet.h"
 #include "Guilds.h"
 #include "World.h"
-#include "Bandolier.h"
 #include "Webhook.h"
+#include "SaveSystem.h"
 #pragma comment(lib, "Ws2_32.lib")
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
 	save_all();
+	return FALSE;
+}
+void doLog(string txt) {
+	ofstream a("case4logs.txt", ios::app);
+	a << txt + "\n";
+	a.close();
+}
+void doLog2(string txt) {
+	ofstream a("case2logs.txt", ios::app);
+	a << txt + "\n";
+	a.close();
+}
+
+BOOL WINAPI ConsoleHandler(DWORD dwType)
+{
+	switch (dwType) {
+	case CTRL_LOGOFF_EVENT: case CTRL_SHUTDOWN_EVENT: case CTRL_CLOSE_EVENT:
+	{
+		down_save();
+		return TRUE;
+	}
+	default:
+	{
+		break;
+	}
+	}
 	return FALSE;
 }
 long long last_time = 0, last_guild_save = time(NULL) + 60, last_time_ = 0, last_time2_ = 0, last_hm_time = 0;// , last_growganoth_time = 0;
@@ -84,7 +110,11 @@ void loop_worlds() {
 		last_time2_ = ms_time + 10000;
 		if (restart_server_time == 0) {
 			restart_server_status_seconds = false;
-			trigger_save_(true);
+			for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+				if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+				only_role = true;
+				enet_peer_disconnect_later(currentPeer, 0);
+			}
 		}
 		restart_server_time -= 10;
 	}
@@ -159,14 +189,6 @@ void loop_worlds() {
 				}
 				pInfo(currentPeer)->hand_torch = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
 			}
-			/*
-			if (pInfo(currentPeer)->rb == 1 && pInfo(currentPeer)->name_time + 250 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
-				pInfo(currentPeer)->name_time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
-				string msg2 = pInfo(currentPeer)->name_color;
-				if (pInfo(currentPeer)->is_legend) msg2 = "`" + to_string(rand() % 9 + 1) + pInfo(currentPeer)->tankIDName;
-				else for (int i = 0; i < pInfo(currentPeer)->tankIDName.length(); i++) msg2 += "`" + to_string(rand() % 9 + 1) + "" + pInfo(currentPeer)->tankIDName[i];
-				ChangeName(currentPeer, msg2);
-			}*/
 			if (pInfo(currentPeer)->hand == 2204 and pInfo(currentPeer)->x != -1 and pInfo(currentPeer)->y != -1) {
 				if (not has_playmod(pInfo(currentPeer), "Irradiated")) {
 					if (pInfo(currentPeer)->geiger_x == -1 and pInfo(currentPeer)->geiger_y == -1) pInfo(currentPeer)->geiger_x = (rand() % 100) * 32, pInfo(currentPeer)->geiger_y = (rand() % 54) * 32;
@@ -233,7 +255,8 @@ void loop_worlds() {
 									}
 									int chanced = 0;
 									if (thedaytoday == 3) chanced = 3;
-									add_geiger_xp(currentPeer, 1);
+									add_role_xp(currentPeer, 1, "geiger");
+									// GEIGER QUEST
 									vector<int> geiger_items = { 6416,3196,2206,1500,1498,2806,2804,8270,8272,8274,2244,2246,2242,3792,3306,4676,4678,4680,4682,4652,4650,4648,4646,11186,10086 };
 									vector<int> rare_cr = { 2248,2250,3792,10084 };
 									vector<int> rarest = { 4654 , 9380 , 11562, 1486 };
@@ -365,365 +388,21 @@ void loop_worlds() {
 			}
 		}
 	}
-	/*
-	if (last_time_ - ms_time <= 0) {
-		last_time_ = ms_time + 500;
-		for (int a = 0; a < t_worlds.size(); a++) {
-			string name = t_worlds[a];
-			vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name](const World& a) { return a.name == name; });
-			if (p != worlds.end()) {
-				World* world = &worlds[p - worlds.begin()];
-				if (world->machines.size() == 0 and world->npc.size() == 0) {
-					t_worlds.erase(t_worlds.begin() + a);
-					a--;
-					continue;
-				}
-				int ySize = world->blocks.size() / 100, xSize = world->blocks.size() / ySize;
-				vector<int> alr_done;
-				for (int i_ = 0; i_ < world->machines.size(); i_++) {
-					WorldMachines* machine = &world->machines[i_];
-					if (not machine->enabled or machine->target_item == 0) continue;
-					if (machine->last_ - ms_time > 0) continue;
-					machine->last_ = ms_time + 1500;
-					WorldBlock* itemas = &world->blocks[machine->x + (machine->y * 100)];
-					if (itemas->pr <= 0 or find(alr_done.begin(), alr_done.end(), itemas->fg) != alr_done.end()) continue;
-					switch (itemas->fg) {
-						case 6952:
-						{
-							for (int a_ = 0; a_ < world->blocks.size(); a_++) {
-								if (world->blocks[a_].fg == machine->target_item or world->blocks[a_].bg == machine->target_item) {
-									if (items[machine->target_item].blockType == BlockTypes::BACKGROUND and world->blocks[a_].fg != 0) continue;
-									int x_ = a_ % xSize, y_ = a_ / xSize;
-									WorldBlock* block_ = &world->blocks[x_ + (y_ * 100)];
-									PlayerMoving data_{};
-									data_.packetType = 17, data_.x = x_ * 32 + 16, data_.y = y_ * 32 + 16, data_.characterState = 0x8;
-									data_.XSpeed = 2, data_.YSpeed = 1;
-									BYTE* raw = packPlayerMoving(&data_);
-									float rotation = 2;
-									memcpy(raw + 40, &rotation, 4);
-									PlayerMoving extended_particle_data_{};
-									extended_particle_data_.packetType = 36, extended_particle_data_.x = x_ * 32 + 16, extended_particle_data_.y = y_ * 32 + 16, extended_particle_data_.characterState = 0x8;
-									extended_particle_data_.netID = 110;
-									BYTE* ex_raw = packPlayerMoving(&extended_particle_data_);
-									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-										if (pInfo(currentPeer)->world == world->name) {
-											send_raw(currentPeer, 4, ex_raw, 56, ENET_PACKET_FLAG_RELIABLE);
-											send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-										}
-									}
-									delete[] raw, ex_raw;
-									itemas->pr--;
-									if (itemas->pr <= 0) {
-										PlayerMoving data_{};
-										data_.packetType = 5, data_.punchX = machine->x, data_.punchY = machine->y, data_.characterState = 0x8;
-										BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world, itemas));
-										BYTE* blc = raw + 56;
-										form_visual(blc, *itemas, *world, NULL, false);
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											if (pInfo(currentPeer)->world == world->name) {
-												send_raw(currentPeer, 4, raw, 112 + alloc_(world, itemas), ENET_PACKET_FLAG_RELIABLE);
-											}
-										}
-										delete[] raw, blc;
-									}
-									if (block_->hp == -1) {
-										block_->hp = items[machine->target_item].breakHits / 6;
-										block_->lp = time_;
-									}
-									block_->hp -= 1;
-									if (block_->hp == 0) {
-										if (items[machine->target_item].max_gems != 0) {
-											int maxgems = items[machine->target_item].max_gems;
-											if (machine->target_item == 120) maxgems = 50;
-											int c_ = rand() % (maxgems + 1);
-											if (c_ != 0) {
-												bool no_seed = false, no_gems = false, no_block = false;
-												if (machine->target_item == 2242 or machine->target_item == 2244 or machine->target_item == 2246 or machine->target_item == 2248 or machine->target_item == 2250 or machine->target_item == 542) no_seed = true, no_block = true;
-												else {
-													for (int i_ = 0; i_ < world->drop.size(); i_++) {
-														if (abs(world->drop[i_].y - y_ * 32) <= 16 and abs(world->drop[i_].x - x_ * 32) <= 16) {
-															if (world->drop[i_].id == 112 and items[machine->target_item].rarity < 8) {
-																no_gems = true;
-															}
-															else {
-																no_seed = true, no_block = true;
-															}
-														}
-													}
-												}
-												int chanced = 0;
-												if (thedaytoday == 2) chanced = 5;
-												if (rand() % 100 < 7) {
-													WorldDrop drop_block_{};
-													drop_block_.id = machine->target_item, drop_block_.count = 1, drop_block_.uid = uint16_t(world->drop.size()) + 1, drop_block_.x = (x_ * 32) + rand() % 17, drop_block_.y = (y_ * 32) + rand() % 17;
-													if (not use_mag(world, drop_block_, x_, y_) and not no_block) {
-														dropas_(world, drop_block_);
-													}
-												}
-												else if (rand() % 100 < (items[machine->target_item].newdropchance + chanced)) {
-													WorldDrop drop_seed_{};
-													drop_seed_.id = machine->target_item + 1, drop_seed_.count = 1, drop_seed_.uid = uint16_t(world->drop.size()) + 1, drop_seed_.x = (x_ * 32) + rand() % 17, drop_seed_.y = (y_ * 32) + rand() % 17;
-													if (not use_mag(world, drop_seed_, x_, y_) and not no_seed) {
-														dropas_(world, drop_seed_);
-													}
-												}
-												else if (not no_gems) {
-													drop_rare_item(world, NULL, machine->target_item, x_, y_, false);
-													gems_(NULL, world, c_, x_ * 32, y_ * 32, machine->target_item);
-												}
-											}
-										}
-										reset_(block_, x_, y_, world);
-										PlayerMoving data_{};
-										data_.packetType = 5, data_.punchX = x_, data_.punchY = y_, data_.characterState = 0x8;
-										BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world, block_));
-										BYTE* blc = raw + 56;
-										form_visual(blc, *block_, *world, NULL, false);
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											if (pInfo(currentPeer)->world == world->name) {
-												send_raw(currentPeer, 4, raw, 112 + alloc_(world, block_), ENET_PACKET_FLAG_RELIABLE);
-											}
-										}
-										delete[] raw, blc;
-									}
-									else {
-										PlayerMoving break_data{ -1, 0, 0x8, 0x0, 6, x_, y_, 0, (float)x_, (float)y_, 0, 0 };
-										BYTE* p_ = packPlayerMoving(&break_data);
-										p_[2] = 0, p_[3] = 0;
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											if (pInfo(currentPeer)->world == world->name) {
-												send_raw(currentPeer, 4, p_, 56, ENET_PACKET_FLAG_RELIABLE);
-											}
-										}
-										delete[] p_;
-									}
-									break;
-								}
-							}
-							break;
-						}
-						case 6950:
-						{
-							for (int a_ = 0; a_ < world->blocks.size(); a_++) {
-								if (world->blocks[a_].fg == machine->target_item) {
-									int x_ = a_ % xSize, y_ = a_ / xSize;
-									WorldBlock* block_ = &world->blocks[x_ + (y_ * 100)];
-									uint32_t laikas = uint32_t((time_ - block_->planted <= items[block_->fg].growTime ? time_ - block_->planted : items[block_->fg].growTime));
-									if (laikas == items[block_->fg].growTime) {
-										int drop_count = items[block_->fg - 1].rarity == 1 ? (items[block_->fg - 1].farmable ? (rand() % 9) + 4 : (rand() % block_->fruit) + 1) : items[block_->fg - 1].farmable ? (rand() % 5) + 4 : (rand() % block_->fruit) + 1;
-										if (harvest_seed(world, block_, x_, y_, drop_count, -1)) {
-										}
-										else if (world->weather == 8 and rand() % 300 < 2) {
-											WorldDrop drop_block_{};
-											drop_block_.id = 3722, drop_block_.count = 1, drop_block_.uid = uint16_t(world->drop.size()) + 1, drop_block_.x = x_ * 32 + rand() % 17, drop_block_.y = y_ * 32 + rand() % 17;
-											dropas_(world, drop_block_);
-											PlayerMoving data_2{};
-											data_2.packetType = 0x11, data_2.x = drop_block_.x, data_2.y = drop_block_.y, data_2.YSpeed = 108;
-											BYTE* raw2 = packPlayerMoving(&data_2);
-											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != world->name) continue;
-												send_raw(currentPeer, 4, raw2, 56, ENET_PACKET_FLAG_RELIABLE);
-											}
-											delete[] raw2;
-										}
-										if (drop_count != 0) drop_rare_item(world, NULL, machine->target_item - 1, x_, y_, true);
-										{
-											PlayerMoving data_{};
-											data_.packetType = 17, data_.x = x_ * 32 + 16, data_.y = y_ * 32 + 16, data_.characterState = 0x8;
-											data_.XSpeed = 2, data_.YSpeed = 1;
-											BYTE* raw = packPlayerMoving(&data_, 56);
-											float rotation = 2;
-											memcpy(raw + 40, &rotation, 4);
-											PlayerMoving extended_particle_data_{};
-											extended_particle_data_.packetType = 36, extended_particle_data_.x = x_ * 32 + 16, extended_particle_data_.y = y_ * 32 + 16, extended_particle_data_.characterState = 0x8;
-											extended_particle_data_.netID = 109;
-											BYTE* ex_raw = packPlayerMoving(&extended_particle_data_, 56);
-											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-												if (pInfo(currentPeer)->world == world->name) {
-													send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-													send_raw(currentPeer, 4, ex_raw, 56, ENET_PACKET_FLAG_RELIABLE);
-												}
-											}
-											delete[] raw, ex_raw;
-										}
-										itemas->pr--;
-										if (itemas->pr <= 0) {
-											PlayerMoving data_{};
-											data_.packetType = 5, data_.punchX = machine->x, data_.punchY = machine->y, data_.characterState = 0x8;
-											BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world, itemas));
-											BYTE* blc = raw + 56;
-											form_visual(blc, *itemas, *world, NULL, false);
-											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-												if (pInfo(currentPeer)->world == world->name) {
-													send_raw(currentPeer, 4, raw, 112 + alloc_(world, itemas), ENET_PACKET_FLAG_RELIABLE);
-												}
-											}
-											delete[] raw, blc;
-										}
-									}
-									break;
-								}
-							}
-							break;
-						}
-					}
-					alr_done.push_back(itemas->fg);
-				}
-				for (int i_ = 0; i_ < world->npc.size(); i_++) {
-					WorldNPC* npc = &world->npc[i_];
-					if (not npc->enabled) continue;
-					if (npc->last_ - time_ > 0) continue;
-					int active = 0;
-					map<string, vector<WorldNPC>>::iterator it;
-					for (it = active_npc.begin(); it != active_npc.end(); it++) {
-						if (it->first == world->name) {
-							for (int i_ = 0; i_ < it->second.size(); i_++) {
-								if (it->second[i_].uid != -1) active++;
-								if (active > 10) break;
-							}
-							break;
-						}
-					}
-					if (active > 10) continue;
-					npc->last_ = time_ + npc->rate_of_fire;
-					WorldBlock* itemas = &world->blocks[npc->x + (npc->y * 100)];
-					if (not itemas->enabled) continue;
-					switch (itemas->fg) {
-					case 8020: case 4344:
-					{
-						uint16_t projectile_speed = npc->projectile_speed;
-						PlayerMoving data_{};
-						data_.packetType = 34;
-						data_.x = npc->x * 32 + 16; //nuo x
-						data_.y = npc->y * 32 + (itemas->fg == 8020 ? 6 : 16); //nuo y
-						data_.XSpeed = npc->x * 32 + 16; // iki x
-						data_.YSpeed = npc->y * 32 + (itemas->fg == 8020 ? 6 : 16); // iki y
-						data_.punchY = npc->projectile_speed;
-						BYTE* raw = packPlayerMoving(&data_);
-						uint16_t uid = (active_npc.find(world->name) != active_npc.end() ? active_npc[world->name].size() : 0);
-						raw[1] = (itemas->fg == 8020 ? 15 : 8);
-						raw[2] = uid; // npc uid turi buti unique
-						raw[3] = 2; // 2 yra spawn o 7 yra despawn
-						memcpy(raw + 40, &npc->kryptis, 4);
-						npc->uid = uid;
-						npc->started_moving = ms_time;
-						if (active_npc.find(world->name) != active_npc.end()) {
-							active_npc[world->name].push_back(*npc);
-						}
-						else {
-							vector<WorldNPC> list_;
-							list_.push_back(*npc);
-							active_npc.insert({ world->name, list_ });
-						}
-						for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-							if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-							if (pInfo(currentPeer)->world == world->name and pInfo(currentPeer)->x != -1) {
-								send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-							}
-						}
-						delete[]raw;
-						break;
-					}
-					default:
-					{
-						bool cant_del = false;
-						map<string, vector<WorldNPC>>::iterator it;
-						for (it = active_npc.begin(); it != active_npc.end(); it++) {
-							if (cant_del) break;
-							if (it->first == world->name) {
-								for (int i_ = 0; i_ < it->second.size(); i_++) {
-									WorldNPC* npc_ = &it->second[i_];
-									if (npc->uid == npc_->uid) {
-										cant_del = true;
-										break;
-									}
-								}
-							}
-						}
-						if (not cant_del) {
-							world->npc.erase(world->npc.begin() + i_);
-						}
-						break;
-					}
-					}
-				}
-				map<string, vector<WorldNPC>>::iterator it;
-				for (it = active_npc.begin(); it != active_npc.end(); it++) {
-					if (it->first == world->name) {
-						for (int i_ = 0; i_ < it->second.size(); i_++) {
-							WorldNPC* npc_ = &it->second[i_];
-							if (npc_->uid == -1) continue;
-							double per_sekunde_praeina_bloku = (double)npc_->projectile_speed / 32;
-							double praejo_laiko = (double)(ms_time - npc_->started_moving) / 1000;
-							double praejo_distancija = (double)per_sekunde_praeina_bloku * (double)praejo_laiko;
-							double current_x = ((int)npc_->kryptis == 180 ? (((double)npc_->x - (double)praejo_distancija) * 32) + 16 : (((double)npc_->x + (double)praejo_distancija) * 32) + 16);
-							double current_y = (double)npc_->y * 32;
-							if (current_x / 32 < 0 or current_x / 32 >= 100 or current_y / 32 < 0 or current_y / 32 >= 60)
-							{
-								PlayerMoving data_{};
-								data_.packetType = 34;
-								data_.x = (current_x); //nuo x
-								data_.y = (current_y + (npc_->id == 8020 ? 6 : 16)); //nuo y
-								data_.XSpeed = (current_x); // iki x
-								data_.YSpeed = (current_y + (npc_->id == 8020 ? 6 : 16)); // iki y
-								data_.punchY = npc_->projectile_speed;
-								BYTE* raw = packPlayerMoving(&data_);
-								raw[1] = 15;
-								raw[2] = npc_->uid;
-								raw[3] = 7;
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-									if (pInfo(currentPeer)->world == world->name and pInfo(currentPeer)->x != -1) {
-										send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-									}
-								}
-								delete[]raw;
-								npc_->uid = -1;
-								continue;
-							}
-							try {
-								WorldBlock* block_ = &world->blocks[current_x / 32 + (current_y / 32 * 100));
-								if (items[block_->fg].collisionType == 1 or (current_x / 32) > 100 or (current_x / 32) < 0) {
-									PlayerMoving data_{};
-									data_.packetType = 34;
-									data_.x = (current_x); //nuo x
-									data_.y = (current_y + (npc_->id == 8020 ? 6 : 16)); //nuo y
-									data_.XSpeed = (current_x); // iki x
-									data_.YSpeed = (current_y + (npc_->id == 8020 ? 6 : 16)); // iki y
-									data_.punchY = npc_->projectile_speed;
-									BYTE* raw = packPlayerMoving(&data_);
-									raw[1] = 15;
-									raw[2] = npc_->uid;
-									raw[3] = 7;
-									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-										if (pInfo(currentPeer)->world == world->name and pInfo(currentPeer)->x != -1) {
-											send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-										}
-									}
-									delete[]raw;
-									npc_->uid = -1;
-								}
-							}
-							catch (out_of_range) {
-								continue;
-							}
-						}
-						break;
-					}
-				}
-			}
-		}
-	}*/
 }
-
+bool isASCII(const std::string& s)
+{
+	return !std::any_of(s.begin(), s.end(), [](char c) {
+		return static_cast<unsigned char>(c) > 127;
+		});
+}
+inline void Loopos() {
+	while (true) {
+		Sleep(500);
+		loop_worlds();
+	}
+}
 int main(int argc, char* argv[]) {
+	BOOL ret = SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 	system("COLOR 9");
 	system("TITLE Growhoshi Server");
 	hoshi_info("Please wait while we setuping the server");
@@ -788,13 +467,21 @@ int main(int argc, char* argv[]) {
 	time_t timeNow = time(0);
 	char* dt = ctime(&timeNow);
 	cout << "Server Running: " << dt << endl;
-	hoshi_info("Enet Service has been started on port: " + to_string(server_port));
-	hoshi_info("items loaded: " + setGems(items.size()));
+	hoshi_info("ENet Service started on port: " + to_string(server_port));
+	hoshi_info("Items data loaded containing : " + setGems(items.size()) + " items");
 	hoshi_db_logs("All data successfully loaded.");
-	std::thread runautosave(autosave);
+	thread runautosave(autosave);
 	if (runautosave.joinable()) {
 		runautosave.detach();
 	}
+	thread a__(Server_Saving);
+	thread b__(Server_Reset);
+	thread c__(Loopos);
+	a__.detach();
+	b__.detach();
+	c__.detach();
+	signal(SIGSEGV, save_w);
+	signal(SIGABRT, save_w);
 	daily_quest();
 	honors_reset();
 
@@ -864,26 +551,77 @@ int main(int argc, char* argv[]) {
 				case 2:
 				{
 					string cch = text_(event.packet);
-					if (cch.size() > 1024) break;
-					if (cch == "action|getDRAnimations\n" || cch == "action|refresh_player_tribute_data\n") break;
+					theCCH = cch;
+					int lpse = 10;
+					if (cch.size() < 8) {
+						if (pInfo(peer)->tankIDName != "") {
+							add_ban(peer, 6.307e+7, "Usage of Third Party Program", pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
+							gamepacket_t p, p1;
+							p.Insert("OnConsoleMessage");
+							p1.Insert("OnConsoleMessage");
+							p.Insert("CT:[FC]_>> `^>> Server-Operator: `w" + pInfo(peer)->tankIDName + "`` (in: `w" + pInfo(peer)->world + "``) has been disconnected because it was detected sending suspicious packet.");
+							p1.Insert("CT:[FC]_>> `^>> Server-Operator: `w" + pInfo(peer)->tankIDName + "`` has been BANNED for `w730 days``.");
+							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+								if (pInfo(currentPeer)->dev || pInfo(currentPeer)->superdev) {
+									p.CreatePacket(currentPeer);
+									p1.CreatePacket(currentPeer);
+								}
+							}
+						}
+					}
+					if (cch == "action|getDRAnimations\n") break;
 					if (pInfo(peer)->lpps + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 						pInfo(peer)->pps = 0;
 						pInfo(peer)->lpps = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
 					}
 					else {
 						pInfo(peer)->pps++;
-						if (pInfo(peer)->pps >= 10) {
+						if (pInfo(peer)->pps >= lpse) {
+							hoshi_warn("Detected Packet (2) Spam by" + pInfo(peer)->tankIDName);
 							enet_peer_disconnect_later(peer, 0);
 							break;
 						}
+					}
+					//doLog2(cch);
+					if (cch.size() < 5) break;
+					if (cch.size() > 1024 || not isASCII(cch)) break;
+					//cout << cch << endl;
+					if (pInfo(peer)->last_open_packet + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+						pInfo(peer)->packet_to_much = 0;
+						pInfo(peer)->last_open_packet = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+					}
+					else {
+						pInfo(peer)->packet_to_much++;
+						if (pInfo(peer)->packet_to_much >= 30) {
+							add_modlogs(peer, pInfo(peer)->name_color + pInfo(peer)->tankIDName, "`6 [" + pInfo(peer)->ip + " BANNED BY SYSTEM (PACKET BYPASS/SPAM) +" + text_(event.packet), "");
+							hoshi_info(pInfo(peer)->tankIDName + " Auto Banned for bypassing / spamming packets ");
+							add_ban(peer, 61758000, "Spaming packet (maybe dupe/crash)!", "`4Hoshi AutoBan-System``");
+							enet_peer_disconnect_later(peer, 0);
+							break;
+						}
+					}
+
+					if (pInfo(peer)->world != "") {
+						if (pInfo(peer)->x / 32 == -1 || pInfo(peer)->y / 32 == -1) break;
 					}
 					if (pInfo(peer)->requestedName.empty()) {
 						if (pInfo(peer)->enter_game != 0 || pInfo(peer)->world != "") enet_peer_disconnect_later(peer, 0);
 						else player_login(peer, cch);
 					}
 					else if (cch.find("action|validate_world") != string::npos) {
-						save_player(pInfo(peer));
+						vector<string> t_ = explode("|", cch);
+						if (t_.size() < 3) break;
+						string Name = explode("\n", t_[2])[0];
+						int Available = 0;
+						if (fs::is_directory("database/worlds/" + Name + "_.json")) Available = 1;
+						packet_(peer, "action|world_validated\navailable|" + to_string(Available) + "\nworld_name|" + Name + "\n");
 						break;
+					}
+					if (!pInfo(peer)->isIn) {
+						if (!player_login(peer, cch)) {
+							break;
+						}
 					}
 					else if (cch.find("action|input") != string::npos) {
 						vector<string> t_ = explode("|", cch);
@@ -932,13 +670,23 @@ int main(int argc, char* argv[]) {
 								p.Insert("OnConsoleMessage"), p.Insert("`6>>`4Spam detected! ``Please wait a bit before typing anything else.  Please note, any form of bot/macro/auto-paste will get all your accounts banned, so don't do it!"), p.CreatePacket(peer);
 							}
 							else {
+								replaceAll(msg, "`%", "");
+								string chat_color = "`$";
+								if (pInfo(peer)->d_name.empty()) {
+									chat_color = pInfo(peer)->superdev ? "`5" : pInfo(peer)->dev ? "`1" : pInfo(peer)->tmod ? "`^" : "`$";
+								}
+								if (has_playmod(pInfo(peer), "Infected!")) {
+									chat_color = "`2";
+									if (rand() % 4 < 1) chat_color += "Brraaiinnss...";
+								}
+								if (pInfo(peer)->face == 1170)  chat_color = "`4";
 								gamepacket_t p, p2;
 								p.Insert("OnConsoleMessage");
-								p.Insert("CP:_PL:0_OID:_CT:[W]_ `6<`w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "`6> `$" + (has_playmod(pInfo(peer), "Infected!") ? "`2" : "") + "" + ((pInfo(peer)->superdev == 1 and pInfo(peer)->d_name.empty()) ? "`5" : (pInfo(peer)->dev == 1 and pInfo(peer)->d_name.empty()) ? "`1" : (pInfo(peer)->tmod == 1 and pInfo(peer)->d_name.empty()) ? "`^" : "`$") + msg + "`````");
+								p.Insert("CP:_PL:0_OID:_CT:[W]_ `6<`w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + (pInfo(peer)->is_legend ? " of Legend" : "") + "`6> " + chat_color + msg);
 								p2.Insert("OnTalkBubble");
 								p2.Insert(pInfo(peer)->netID);
 								if (check_ != ":/" and check_ != ":p" and check_ != ":*" and check_ != ";)" and check_ != ":d" and check_ != ":o" and check_ != ":'(" and check_ != ":(") {
-									p2.Insert("CP:_PL:0_OID:_player_chat=" + a + ((pInfo(peer)->superdev == 1 and pInfo(peer)->d_name.empty()) ? "`5" : (pInfo(peer)->dev == 1 and pInfo(peer)->d_name.empty()) ? "`1" : ((pInfo(peer)->tmod == 1 and pInfo(peer)->d_name.empty())) ? "`^" : "`0") + msg);
+									p2.Insert("CP:_PL:0_OID:_player_chat=" + (chat_color == "`$" ? "" : chat_color) + msg);
 								}
 								else p2.Insert(msg);
 								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
@@ -952,7 +700,8 @@ int main(int argc, char* argv[]) {
 													break;
 												}
 											}
-										} if (not muted_) {
+										}
+										if (not muted_) {
 											p.CreatePacket(currentPeer);
 											p2.CreatePacket(currentPeer);
 										}
@@ -1117,6 +866,12 @@ int main(int argc, char* argv[]) {
 					else if (cch == "action|trade_cancel\n") cancel_trade(peer);
 					if (pInfo(peer)->trading_with == -1) {
 						if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|newbie\n\n") {
+							{
+								gamepacket_t p(7500), p2, p3;
+								p.Insert("OnClearNPCMessage"), p.CreatePacket(peer);
+								p2.Insert("OnAddNotification"), p2.Insert("interface/tutorial/tut07_create_world.rttex"), p2.Insert("`wLet's create a worlds! You can create a worlds by enter a random worlds and lock it!``"), p2.Insert("audio/tip_start.wav"), p2.Insert(1), p2.CreatePacket(peer);
+								p3.Insert("OnPersistentNPCMessage"), p3.Insert(4032), p3.Insert("Welcome to Growhoshi! Type /help to see all commands.\n`2Pickup`` your newbie rewards and start the journey!"), p3.Insert(1), p3.CreatePacket(peer);
+							}
 							pInfo(peer)->n = 1;
 							if (pInfo(peer)->cc == 0) {
 								gamepacket_t p;
@@ -1125,6 +880,1284 @@ int main(int argc, char* argv[]) {
 								p.CreatePacket(peer);
 								// to do dpp
 								pInfo(peer)->cc = 1;
+							}
+							break;
+						}
+						/*if (cch.find("action|dialog_return\ndialog_name|dnaproc") != string::npos) {
+							int DNAID;
+							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
+							std::stringstream ss(cch);
+							std::string to;
+							try {
+								while (std::getline(ss, to, '\n')) {
+									vector<string> infoDat = explode("|", to);
+									if (infoDat.at(0) == "choose") {
+										DNAID = atoi(infoDat.at(1).c_str());
+										if (items[DNAID].name.find("Dino DNA Strand") != string::npos || items[DNAID].name.find("Plant DNA Strand") != string::npos || items[DNAID].name.find("Raptor DNA Strand") != string::npos) {
+											if (pInfo(peer)->DNAInput == 0) {
+												pInfo(peer)->IDDNA1 = DNAID;
+												pInfo(peer)->DNAInput = 1;
+												SendDNAProcessor(peer, x_, y_,false, true, false, 0, true, false);
+											}
+											else if (pInfo(peer)->DNAInput == 1) {
+												pInfo(peer)->IDDNA2 = DNAID;
+												pInfo(peer)->DNAInput = 2;
+												SendDNAProcessor(peer, x_, y_,false, true, false, 0, true, false);
+											}
+											else if (pInfo(peer)->DNAInput == 2) {
+												pInfo(peer)->IDDNA3 = DNAID;
+												pInfo(peer)->DNAInput = 3;
+												int DnaNumber1 = 0, DnaNumber2 = 0, DnaNumber3 = 0, What;
+												ifstream infile("DnaRecipe.txt");
+												for (string line; getline(infile, line);) {
+													if (line.length() > 3 && line.at(0) != '/' && line.at(1) != '/') {
+														auto ex = explode("|", line);
+														int id1 = atoi(ex.at(0).c_str());
+														int id2 = atoi(ex.at(1).c_str());
+														int id3 = atoi(ex.at(2).c_str());
+														if (id1 == pInfo(peer)->IDDNA1 && id2 == pInfo(peer)->IDDNA2 && id3 == pInfo(peer)->IDDNA3) {
+															DnaNumber1 = atoi(ex.at(0).c_str());
+															DnaNumber2 = atoi(ex.at(1).c_str());
+															DnaNumber3 = atoi(ex.at(2).c_str());
+															What = atoi(ex.at(3).c_str());
+															break;
+														}
+													}
+												}
+												infile.close();
+												if (pInfo(peer)->IDDNA1 == DnaNumber1 && pInfo(peer)->IDDNA2 == DnaNumber2 && pInfo(peer)->IDDNA3 == DnaNumber3 && DnaNumber3 != 0 && DnaNumber2 != 0 && DnaNumber1 != 0 && What != 0) {
+													SendDNAProcessor(peer, x_, y_,false, true, false, 0, true, false);
+												}
+												else {
+													if (pInfo(peer)->DNAInput >= 1) {
+														SendDNAProcessor(peer, x_, y_,false, true, false, 0, true, true);
+													}
+													else {
+														SendDNAProcessor(peer, x_, y_,false, false, false, 0, true, true);
+													}
+												}
+											}
+										}
+										else {
+											if (pInfo(peer)->DNAInput >= 1) {
+												SendDNAProcessor(peer, x_, y_,true, false, false, 0, true, false);
+											}
+											else {
+												SendDNAProcessor(peer, x_, y_,true, false, false, 0, false, false);
+											}
+										}
+									}
+								}
+							}
+							catch (const std::out_of_range& e) {
+								std::cout << e.what() << std::endl;
+							}
+							if (cch.find("buttonClicked|remove0") != string::npos) {
+								if (pInfo(peer)->DNAInput == 1) {
+									int DNARemoved = pInfo(peer)->IDDNA1;
+									pInfo(peer)->IDDNA1 = 0;
+									pInfo(peer)->DNAInput = 0;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, false, false);
+								}
+								if (pInfo(peer)->DNAInput == 2) {
+									int DNARemoved = pInfo(peer)->IDDNA1;
+									pInfo(peer)->IDDNA1 = pInfo(peer)->IDDNA2;
+									pInfo(peer)->IDDNA2 = 0;
+									pInfo(peer)->DNAInput = 1;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, true, false);
+								}
+								if (pInfo(peer)->DNAInput == 3) {
+									int DNARemoved = pInfo(peer)->IDDNA1;
+									pInfo(peer)->IDDNA1 = pInfo(peer)->IDDNA2;
+									pInfo(peer)->IDDNA2 = pInfo(peer)->IDDNA3;
+									pInfo(peer)->IDDNA3 = 0;
+									pInfo(peer)->DNAInput = 2;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, true, false);
+								}
+							}
+							if (cch.find("buttonClicked|remove1") != string::npos) {
+								if (pInfo(peer)->DNAInput == 2) {
+									int DNARemoved = pInfo(peer)->IDDNA2;
+									pInfo(peer)->IDDNA2 = 0;
+									pInfo(peer)->DNAInput = 1;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, true, false);
+								}
+								if (pInfo(peer)->DNAInput == 3) {
+									int DNARemoved = pInfo(peer)->IDDNA2;
+									pInfo(peer)->IDDNA2 = pInfo(peer)->IDDNA3;
+									pInfo(peer)->IDDNA3 = 0;
+									pInfo(peer)->DNAInput = 2;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, true, false);
+								}
+							}
+							if (cch.find("buttonClicked|remove2") != string::npos) {
+								if (pInfo(peer)->DNAInput == 3) {
+									int DNARemoved = pInfo(peer)->IDDNA3;
+									pInfo(peer)->IDDNA3 = 0;
+									pInfo(peer)->DNAInput = 2;
+									SendDNAProcessor(peer, x_, y_,false, false, true, DNARemoved, true, false);
+								}
+							}
+							if (cch.find("buttonClicked|combine") != string::npos) {
+								if (pInfo(peer)->DNAInput == 3) {
+									int DnaNumber1 = 0, DnaNumber2 = 0, DnaNumber3 = 0, What;
+									ifstream infile("DnaRecipe.txt");
+									for (string line; getline(infile, line);) {
+										if (line.length() > 3 && line.at(0) != '/' && line.at(1) != '/') {
+											auto ex = explode("|", line);
+											int id1 = atoi(ex.at(0).c_str());
+											int id2 = atoi(ex.at(1).c_str());
+											int id3 = atoi(ex.at(2).c_str());
+											if (id1 == pInfo(peer)->IDDNA1 && id2 == pInfo(peer)->IDDNA2 && id3 == pInfo(peer)->IDDNA3) {
+												DnaNumber1 = atoi(ex.at(0).c_str());
+												DnaNumber2 = atoi(ex.at(1).c_str());
+												DnaNumber3 = atoi(ex.at(2).c_str());
+												What = atoi(ex.at(3).c_str());
+												break;
+											}
+										}
+									}
+									infile.close();
+									if (pInfo(peer)->IDDNA1 == DnaNumber1 && pInfo(peer)->IDDNA2 == DnaNumber2 && pInfo(peer)->IDDNA3 == DnaNumber3 && DnaNumber3 != 0 && DnaNumber2 != 0 && DnaNumber1 != 0 && What != 0) {
+										bool has_enough = false;
+										int dna_1 = 0, dna_2 = 0, dna_3 = 0;
+										{
+											modify_inventory(peer, pInfo(peer)->IDDNA1, dna_1);
+											modify_inventory(peer, pInfo(peer)->IDDNA2, dna_2);
+											modify_inventory(peer, pInfo(peer)->IDDNA3, dna_3);
+											if (dna_1 >= 2 and dna_2 >= 2 and dna_3 >= 2) has_enough = true;
+										}
+										if (has_enough) {
+											int remove = -1, count = items[What].blockType == BlockTypes::FOREGROUND ? 4 : 1;
+											if (modify_inventory(peer, pInfo(peer)->IDDNA1, remove) == 0 and modify_inventory(peer, pInfo(peer)->IDDNA2, remove) == 0 and modify_inventory(peer, pInfo(peer)->IDDNA3, remove) == 0) {
+												modify_inventory(peer, What, count);
+												if (items[What].clothType == ClothTypes::FEET) pInfo(peer)->feet = What;
+												else if (items[What].clothType == ClothTypes::HAND) pInfo(peer)->hand = What;
+												pInfo(peer)->IDDNA1 = 0; pInfo(peer)->IDDNA2 = 0; pInfo(peer)->IDDNA3 = 0; pInfo(peer)->DNAInput = 0;
+												gamepacket_t p, p2;
+												p.Insert("OnConsoleMessage"), p.Insert("DNA Processing complete! The DNA combined into a `2" + items[What].name + "``!"), p.CreatePacket(peer);
+												p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("DNA Processing complete! The DNA combined into a `2" + items[What].name + "``!"), p2.Insert(0), p2.Insert(0), p2.CreatePacket(peer);
+												update_clothes(peer);
+												for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+													if (currentPeer->state != ENET_PEER_STATE_CONNECTED || currentPeer->data == NULL) continue;
+													if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+														{
+															gamepacket_t p;
+															p.Insert("OnParticleEffect"); p.Insert(44); p.Insert((float)x_ * 32 + 16, (float)y_ * 32 + 16); p.CreatePacket(currentPeer);
+														}
+														{
+															PlayerMoving data_{};
+															data_.packetType = 19, data_.plantingTree = 150, data_.netID = pInfo(peer)->netID;
+															data_.punchX = What, data_.punchY = What;
+															int32_t to_netid = pInfo(peer)->netID;
+															BYTE* raw = packPlayerMoving(&data_);
+															raw[3] = 3;
+															memcpy(raw + 8, &to_netid, 4);
+															send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+															delete[]raw;
+														}
+													}
+												}
+											}
+										}
+										else {
+											gamepacket_t p2;
+											p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("DNA Processing complete! The DNA combined into a `2" + items[What].name + "``!"), p2.Insert(0), p2.Insert(0), p2.CreatePacket(peer);
+										}
+									}
+									else {
+										SendDNAProcessor(peer, x_, y_,false, false, false, 0, true, true);
+									}
+								}
+							}
+						}*/
+						if (cch.find("action|dialog_return\ndialog_name|dnaget") != string::npos) {
+							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
+							int item = atoi(explode("\n", explode("item|", cch)[1])[0].c_str());
+							int remove = -1;
+							if (modify_inventory(peer, item, remove) == 0) {
+								int Random = rand() % 100, reward = 0, count = 1;
+								vector<int> list{ 4082,4084,4086,4088,4090,4092,4120,4122,5488 };
+								gamepacket_t p, p2;
+								p.Insert("OnTalkBubble"), p2.Insert("OnConsoleMessage"); p.Insert(pInfo(peer)->netID);
+								if (Random >= 4 and Random <= 10) {
+									reward = list[rand() % list.size()];
+									p.Insert("You ground up a " + items[item].name + ", `9and found " + items[reward].name + " inside!``"), p2.Insert("You ground up a " + items[item].name + ", `9and found " + items[reward].name + " inside!``");
+									modify_inventory(peer, reward, count);
+								}
+								else if (Random >= 1 and Random <= 3) {
+									gamepacket_t a;
+									a.Insert("OnConsoleMessage");
+									a.Insert("Wow! You discovered the missing link between cave-rayman and the modern Growtopian.");
+									reward = 5488;
+									p.Insert("You ground up a " + items[item].name + ", `9and found " + items[reward].name + " inside!``"), p2.Insert("You ground up a " + items[item].name + ", `9and found " + items[reward].name + " inside!``");
+									modify_inventory(peer, reward, count);
+									a.CreatePacket(peer);
+								}
+								else {
+									p.Insert("You ground up a " + items[item].name + ", `3but any DNA inside was destroyed in the process.``"), p2.Insert("You ground up a " + items[item].name + ", `3but any DNA inside was destroyed in the process.``");
+								}
+								p.Insert(0), p.Insert(0);
+								p2.CreatePacket(peer), p.CreatePacket(peer);
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED || currentPeer->data == NULL) continue;
+									if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+										if (reward != 0) {
+											packet_(currentPeer, "action|play_sfx\nfile|audio/bell.wav\ndelayMS|0");
+											PlayerMoving data_{};
+											data_.packetType = 19, data_.plantingTree = 150, data_.netID = pInfo(peer)->netID;
+											data_.punchX = reward, data_.punchY = reward;
+											int32_t to_netid = pInfo(peer)->netID;
+											BYTE* raw = packPlayerMoving(&data_);
+											raw[3] = 3;
+											memcpy(raw + 8, &to_netid, 4);
+											send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+											delete[]raw;
+										}
+										else {
+											packet_(currentPeer, "action|play_sfx\nfile|audio/ch_start.wav\ndelayMS|0");
+										}
+									}
+								}
+							}
+						}
+						if (cch.find("action|dialog_return\ndialog_name|artifact_upgrade") != string::npos) {
+							/*
+							5104|Celestial Kaleidoscope
+							5106|Harmonic Chimes
+							5204|Plasma Globe
+							5070|Crystallized Reality
+							5072|Crystallized Wealth
+							5074|Crystallized Brilliance
+							5076|Crystallized Nature|999
+							*/
+							// Wisdom
+							if (cch.find("buttonClicked|upgrade-5126") != string::npos) {
+								SendArtifactUpgrade(peer, 5078, 1, 5126, 5104, 1, 5074, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5128") != string::npos) {
+								SendArtifactUpgrade(peer, 5126, 1, 5128, 5106, 1, 5074, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5130") != string::npos) {
+								SendArtifactUpgrade(peer, 5128, 2, 5130, 5204, 1, 5074, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5132") != string::npos) {
+								SendArtifactUpgrade(peer, 5130, 2, 5132, 5104, 2, 5074, 2);
+							}
+							else if (cch.find("buttonClicked|upgrade-5134") != string::npos) {
+								SendArtifactUpgrade(peer, 5132, 3, 5134, 5106, 3, 5074, 2);
+							}
+							// Tesseract
+							else if (cch.find("buttonClicked|upgrade-5144") != string::npos) {
+								SendArtifactUpgrade(peer, 5080, 1, 5144, 5204, 1, 5070, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5146") != string::npos) {
+								SendArtifactUpgrade(peer, 5144, 1, 5146, 5104, 1, 5070, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5148") != string::npos) {
+								SendArtifactUpgrade(peer, 5146, 2, 5148, 5106, 1, 5070, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5150") != string::npos) {
+								SendArtifactUpgrade(peer, 5148, 2, 5150, 5204, 2, 5070, 2);
+							}
+							else if (cch.find("buttonClicked|upgrade-5152") != string::npos) {
+								SendArtifactUpgrade(peer, 5150, 2, 5152, 5104, 3, 5070, 2);
+							}
+							// Seed of Life
+							else if (cch.find("buttonClicked|upgrade-5162") != string::npos) {
+								SendArtifactUpgrade(peer, 5082, 1, 5162, 5106, 1, 5076, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5164") != string::npos) {
+								SendArtifactUpgrade(peer, 5162, 1, 5164, 5204, 1, 5076, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5166") != string::npos) {
+								SendArtifactUpgrade(peer, 5164, 2, 5166, 5104, 1, 5076, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5168") != string::npos) {
+								SendArtifactUpgrade(peer, 5166, 2, 5168, 5106, 2, 5076, 2);
+							}
+							else if (cch.find("buttonClicked|upgrade-5170") != string::npos) {
+								SendArtifactUpgrade(peer, 5168, 2, 5170, 5204, 3, 5076, 2);
+							}
+							// Riches
+							else if (cch.find("buttonClicked|upgrade-5180") != string::npos) {
+								SendArtifactUpgrade(peer, 5084, 1, 5180, 5104, 2, 5072, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5182") != string::npos) {
+								SendArtifactUpgrade(peer, 5180, 1, 5182, 5204, 2, 5072, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5184") != string::npos) {
+								SendArtifactUpgrade(peer, 5182, 2, 5184, 5106, 2, 5072, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-5186") != string::npos) {
+								SendArtifactUpgrade(peer, 5184, 2, 5186, 5104, 3, 5072, 2);
+							}
+							else if (cch.find("buttonClicked|upgrade-5188") != string::npos) {
+								SendArtifactUpgrade(peer, 5186, 2, 5188, 5204, 3, 5072, 2);
+							}
+							// Orb
+							else if (cch.find("buttonClicked|upgrade-7168") != string::npos) {
+								SendArtifactUpgrade(peer, 7166, 1, 7168, 5106, 2, 7186, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-7170") != string::npos) {
+								SendArtifactUpgrade(peer, 7168, 1, 7170, 5104, 1, 7186, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-7172") != string::npos) {
+								SendArtifactUpgrade(peer, 7170, 2, 7172, 5204, 1, 7186, 1);
+							}
+							else if (cch.find("buttonClicked|upgrade-7174") != string::npos) {
+								SendArtifactUpgrade(peer, 7172, 2, 7174, 5106, 2, 7186, 2);
+							}
+							else if (cch.find("buttonClicked|upgrade-9212") != string::npos) {
+								SendArtifactUpgrade(peer, 7174, 2, 9212, 5104, 3, 7186, 2);
+							}
+							// Upgrading
+							if (cch.find("buttonClicked|completecraft-" + to_string(pInfo(peer)->Upgradeto) + "") != string::npos) {
+								int SoulStone = 0, Crystalized = 0, Celestial = 0, Riddles = 0, HaveAnces = 0;
+								modify_inventory(peer, 5202, SoulStone);
+								modify_inventory(peer, pInfo(peer)->IDCrystalized, Crystalized);
+								modify_inventory(peer, pInfo(peer)->IDCeles, Celestial);
+								modify_inventory(peer, pInfo(peer)->DailyRiddles, Riddles);
+								modify_inventory(peer, pInfo(peer)->AncesID, HaveAnces);
+								if (SoulStone >= pInfo(peer)->HowmuchSoulStone && Crystalized >= pInfo(peer)->JumlahCrystalized && Celestial >= pInfo(peer)->JumlahCeles && Riddles >= 5 && HaveAnces >= 1) {
+									int del_a = -pInfo(peer)->HowmuchSoulStone, del_b = -pInfo(peer)->JumlahCrystalized, del_c = -pInfo(peer)->JumlahCeles, del_d = -5, del_e = -1;
+									modify_inventory(peer, 5202, del_a);
+									modify_inventory(peer, pInfo(peer)->IDCrystalized, del_b);
+									modify_inventory(peer, pInfo(peer)->IDCeles, del_c);
+									modify_inventory(peer, pInfo(peer)->DailyRiddles, del_d);
+									modify_inventory(peer, pInfo(peer)->AncesID, del_e);
+									/*if (pInfo(peer)->Upgradeto == 7174 || pInfo(peer)->Upgradeto == 5186 || pInfo(peer)->Upgradeto == 5150 || pInfo(peer)->Upgradeto == 5168 || pInfo(peer)->Upgradeto == 5132) {
+										SendSuccesAchievement(peer, "Ancestral Being", false, "Ancestral Being", 137, 1);
+									}*/
+									if (pInfo(peer)->ances == pInfo(peer)->AncesID) {
+										pInfo(peer)->ances = 0;
+										update_clothes(peer);
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED || currentPeer->data == NULL) continue;
+											if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+												packet_(currentPeer, "action|play_sfx\nfile|audio/change_clothes.wav\ndelayMS|0");
+											}
+										}
+									}
+									int c_ = 1;
+									if (modify_inventory(peer, pInfo(peer)->Upgradeto, c_) == 0) {
+										gamepacket_t p;
+										p.Insert("OnDialogRequest");
+										p.Insert("add_label_with_icon|big|`9Ancient Goddess``|left|5086|\nadd_spacer|small|\nadd_textbox|`8You've pleased me, clever one.``|left|\nadd_spacer|small|\nend_dialog|artifact_upgrade|Return|");
+										p.CreatePacket(peer);
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnDialogRequest");
+										p.Insert("add_label_with_icon|big|`9Ancient Goddess``|left|5086|\nadd_spacer|small|\nadd_textbox|`8You didn't have enough inventory.``|left|\nadd_spacer|small|\nend_dialog|artifact_upgrade|Return|");
+										p.CreatePacket(peer);
+									}
+								}
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|dialog_minokawa_wings") != string::npos) {
+							bool Minokawa_1 = atoi(explode("\n", explode("checkbox_minokawa_wings|", cch)[1])[0].c_str()), Minokawa_2 = atoi(explode("\n", explode("checkbox_minokawa_pet|", cch)[1])[0].c_str());
+							if (Minokawa_1) pInfo(peer)->MKW = true;
+							else pInfo(peer)->MKW = false;
+							if (Minokawa_2) pInfo(peer)->MKP = true;
+							else pInfo(peer)->MKP = false;
+							update_clothes(peer);
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|halloween_tasks_popup_handle\nbuttonClicked|halloween_claim_task_reward_") != string::npos) {
+							if (Halloween) {
+								int Task = atoi(cch.substr(104, cch.length() - 104).c_str()), Give = 0;
+								string Tasks = "";
+								if (Task == 1) Give = 5, Tasks = "Sacrifice Dark King's Offering"; if (Task == 2) Give = 1, Tasks = "Purchase a Dark Ticket"; if (Task == 3) Give = 2, Tasks = "Purchase a Gift of Growganoth"; if (Task == 4) Give = 10, Tasks = "Purchase Weather Machine - Dark Mountains";
+								int Total = Give;
+								gamepacket_t p, p1;
+								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p1.Insert("OnConsoleMessage");
+								if (modify_inventory(peer, 12766, Give) == 0) {
+									if (Task == 1) pInfo(peer)->Task_Darking--; if (Task == 2) pInfo(peer)->Task_Dark_Ticket--; if (Task == 3) pInfo(peer)->Task_Gift_Growganoth--; if (Task == 4) pInfo(peer)->Task_Mountain--;
+									p.Insert("You received `2" + to_string(Total) + " Halloween Candy`` from Complete " + Tasks + " quest.");
+									p1.Insert("You received `2" + to_string(Total) + " Halloween Candy`` from Complete " + Tasks + " quest.");
+									Send_Halloween_Task(peer, pInfo(peer));
+								}
+								else p.Insert("You doesn't have enough inventory to claim this reward!"), p1.Insert("You doesn't have enough inventory to claim this reward!");
+								p.Insert(0), p.Insert(1), p.CreatePacket(peer), p1.CreatePacket(peer);
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|dialog_rift_cape") != string::npos) {
+							if (cch.find("buttonClicked|button_manual") != string::npos) {
+								SendDialogRiftCape(peer, true);
+								break;
+							}
+							else if (cch.find("buttonClicked|restore_default") != string::npos) {
+								// Rift Cape
+								pInfo(peer)->Time_Change = true;
+								pInfo(peer)->Cycle_Time = 30;
+								// Cape 1
+								pInfo(peer)->Cape_R_0 = 147, pInfo(peer)->Cape_G_0 = 56, pInfo(peer)->Cape_B_0 = 143, pInfo(peer)->Collar_R_0 = 147, pInfo(peer)->Collar_G_0 = 56, pInfo(peer)->Collar_B_0 = 143;
+								pInfo(peer)->Cape_Collar_0 = true, pInfo(peer)->Closed_Cape_0 = false, pInfo(peer)->Open_On_Move_0 = true, pInfo(peer)->Aura_0 = true, pInfo(peer)->Aura_1st_0 = false, pInfo(peer)->Aura_2nd_0 = false, pInfo(peer)->Aura_3rd_0 = true;
+								// Cape 2
+								pInfo(peer)->Cape_R_1 = 137, pInfo(peer)->Cape_G_1 = 30, pInfo(peer)->Cape_B_1 = 43, pInfo(peer)->Collar_R_1 = 34, pInfo(peer)->Collar_G_1 = 35, pInfo(peer)->Collar_B_1 = 63;
+								pInfo(peer)->Cape_Collar_1 = true, pInfo(peer)->Closed_Cape_1 = true, pInfo(peer)->Open_On_Move_1 = false, pInfo(peer)->Aura_1 = true, pInfo(peer)->Aura_1st_1 = false, pInfo(peer)->Aura_2nd_1 = true, pInfo(peer)->Aura_3rd_1 = false;
+								// Total
+								pInfo(peer)->Cape_Value = 1952541691, pInfo(peer)->Cape_Collor_0_Value = 2402849791, pInfo(peer)->Cape_Collar_0_Value = 2402849791, pInfo(peer)->Cape_Collor_1_Value = 723421695, pInfo(peer)->Cape_Collar_1_Value = 1059267327;
+								// End
+								update_clothes(peer);
+								break;
+							}
+							else {
+								try {
+									pInfo(peer)->Time_Change = atoi(explode("\n", explode("checkbox_time_cycle|", cch)[1])[0].c_str()) == 1 ? true : false;
+									if (!is_number(explode("\n", explode("text_input_time_cycle|", cch)[1])[0])) break;
+									pInfo(peer)->Cycle_Time = atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str());
+									{ // Cape_1
+										pInfo(peer)->Cape_Collar_0 = atoi(explode("\n", explode("checkbox_cape_collar0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										{
+											auto Cape_Color0 = explode(",", explode("\n", explode("text_input_cape_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_cape_color0|", cch)[1])[0].c_str());
+											if (Cape_Color0.size() != 3 || t_.size() < 2 || Cape_Color0[0] == "" || Cape_Color0[1] == "" || Cape_Color0[2] == "" || Cape_Color0[0].empty() || Cape_Color0[1].empty() || Cape_Color0[2].empty()) {
+												SendDialogRiftCape(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Cape_Color0[0]) || !is_number(Cape_Color0[1]) || !is_number(Cape_Color0[2]) || atoi(Cape_Color0[0].c_str()) > 255 || atoi(Cape_Color0[1].c_str()) > 255 || atoi(Cape_Color0[2].c_str()) > 255 || atoi(Cape_Color0[0].c_str()) < 0 || atoi(Cape_Color0[1].c_str()) < 0 || atoi(Cape_Color0[2].c_str()) < 0) {
+												SendDialogRiftCape(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Cape_R_0 = atoi(Cape_Color0.at(0).c_str());
+											pInfo(peer)->Cape_G_0 = atoi(Cape_Color0.at(1).c_str());
+											pInfo(peer)->Cape_B_0 = atoi(Cape_Color0.at(2).c_str());
+											pInfo(peer)->Cape_Collor_0_Value = 255 + (((256 * atoi(Cape_Color0.at(0).c_str())) + atoi(Cape_Color0.at(1).c_str()) * 65536) + atoi(Cape_Color0.at(2).c_str()) * (long long int)16777216);
+										}
+										{
+											auto Cape_Collar_Color0 = explode(",", explode("\n", explode("text_input_collar_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_collar_color0|", cch)[1])[0].c_str());
+											if (Cape_Collar_Color0.size() != 3 || t_.size() < 2 || Cape_Collar_Color0[0] == "" || Cape_Collar_Color0[1] == "" || Cape_Collar_Color0[2] == "" || Cape_Collar_Color0[0].empty() || Cape_Collar_Color0[1].empty() || Cape_Collar_Color0[2].empty()) {
+												SendDialogRiftCape(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Cape_Collar_Color0[0]) || !is_number(Cape_Collar_Color0[1]) || !is_number(Cape_Collar_Color0[2]) || atoi(Cape_Collar_Color0[0].c_str()) > 255 || atoi(Cape_Collar_Color0[1].c_str()) > 255 || atoi(Cape_Collar_Color0[2].c_str()) > 255 || atoi(Cape_Collar_Color0[0].c_str()) < 0 || atoi(Cape_Collar_Color0[1].c_str()) < 0 || atoi(Cape_Collar_Color0[2].c_str()) < 0) {
+												SendDialogRiftCape(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Collar_R_0 = atoi(Cape_Collar_Color0.at(0).c_str());
+											pInfo(peer)->Collar_G_0 = atoi(Cape_Collar_Color0.at(1).c_str());
+											pInfo(peer)->Collar_B_0 = atoi(Cape_Collar_Color0.at(2).c_str());
+											pInfo(peer)->Cape_Collar_0_Value = 255 + (((256 * atoi(Cape_Collar_Color0.at(0).c_str())) + atoi(Cape_Collar_Color0.at(1).c_str()) * 65536) + atoi(Cape_Collar_Color0.at(2).c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Closed_Cape_0 = atoi(explode("\n", explode("checkbox_closed_cape0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Open_On_Move_0 = atoi(explode("\n", explode("checkbox_open_on_move0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_0 = atoi(explode("\n", explode("checkbox_aura0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_1st_0 = atoi(explode("\n", explode("checkbox_aura_1st0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_2nd_0 = atoi(explode("\n", explode("checkbox_aura_2nd0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_3rd_0 = atoi(explode("\n", explode("checkbox_aura_3rd0|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+									{ // Cape_2
+										pInfo(peer)->Cape_Collar_1 = atoi(explode("\n", explode("checkbox_cape_collar1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										{
+											auto Cape_Color1 = explode(",", explode("\n", explode("text_input_cape_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_cape_color1|", cch)[1])[0].c_str());
+											if (Cape_Color1.size() != 3 || t_.size() < 2 || Cape_Color1[0] == "" || Cape_Color1[1] == "" || Cape_Color1[2] == "" || Cape_Color1[0].empty() || Cape_Color1[1].empty() || Cape_Color1[2].empty()) {
+												SendDialogRiftCape(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Cape_Color1[0]) || !is_number(Cape_Color1[1]) || !is_number(Cape_Color1[2]) || atoi(Cape_Color1[0].c_str()) > 255 || atoi(Cape_Color1[1].c_str()) > 255 || atoi(Cape_Color1[2].c_str()) > 255 || atoi(Cape_Color1[0].c_str()) < 0 || atoi(Cape_Color1[1].c_str()) < 0 || atoi(Cape_Color1[2].c_str()) < 0) {
+												SendDialogRiftCape(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Cape_R_1 = atoi(Cape_Color1.at(0).c_str());
+											pInfo(peer)->Cape_G_1 = atoi(Cape_Color1.at(1).c_str());
+											pInfo(peer)->Cape_B_1 = atoi(Cape_Color1.at(2).c_str());
+											pInfo(peer)->Cape_Collor_1_Value = 255 + (((256 * atoi(Cape_Color1.at(0).c_str())) + atoi(Cape_Color1.at(1).c_str()) * 65536) + atoi(Cape_Color1.at(2).c_str()) * (long long int)16777216);
+										}
+										{
+											auto Cape_Collar_Color1 = explode(",", explode("\n", explode("text_input_collar_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_collar_color1|", cch)[1])[0].c_str());
+											if (Cape_Collar_Color1.size() != 3 || t_.size() < 2 || Cape_Collar_Color1[0] == "" || Cape_Collar_Color1[1] == "" || Cape_Collar_Color1[2] == "" || Cape_Collar_Color1[0].empty() || Cape_Collar_Color1[1].empty() || Cape_Collar_Color1[2].empty()) {
+												SendDialogRiftCape(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Cape_Collar_Color1[0]) || !is_number(Cape_Collar_Color1[1]) || !is_number(Cape_Collar_Color1[2]) || atoi(Cape_Collar_Color1[0].c_str()) > 255 || atoi(Cape_Collar_Color1[1].c_str()) > 255 || atoi(Cape_Collar_Color1[2].c_str()) > 255 || atoi(Cape_Collar_Color1[0].c_str()) < 0 || atoi(Cape_Collar_Color1[1].c_str()) < 0 || atoi(Cape_Collar_Color1[2].c_str()) < 0) {
+												SendDialogRiftCape(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Collar_R_1 = atoi(Cape_Collar_Color1.at(0).c_str());
+											pInfo(peer)->Collar_G_1 = atoi(Cape_Collar_Color1.at(1).c_str());
+											pInfo(peer)->Collar_B_1 = atoi(Cape_Collar_Color1.at(2).c_str());
+											pInfo(peer)->Cape_Collar_1_Value = 255 + (((256 * atoi(Cape_Collar_Color1.at(0).c_str())) + atoi(Cape_Collar_Color1.at(1).c_str()) * 65536) + atoi(Cape_Collar_Color1.at(2).c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Closed_Cape_1 = atoi(explode("\n", explode("checkbox_closed_cape1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Open_On_Move_1 = atoi(explode("\n", explode("checkbox_open_on_move1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_1 = atoi(explode("\n", explode("checkbox_aura1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_1st_1 = atoi(explode("\n", explode("checkbox_aura_1st1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_2nd_1 = atoi(explode("\n", explode("checkbox_aura_2nd1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Aura_3rd_1 = atoi(explode("\n", explode("checkbox_aura_3rd1|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+								}
+								catch (...) {
+									break;
+								}
+								int TValue = 0;
+								if (pInfo(peer)->Time_Change) TValue += 4096;
+								if (pInfo(peer)->Cape_Collar_0) TValue += 1;
+								if (pInfo(peer)->Cape_Collar_1) TValue += 2;
+								if (pInfo(peer)->Closed_Cape_0) TValue += 4;
+								if (pInfo(peer)->Closed_Cape_1) TValue += 8;
+								if (pInfo(peer)->Open_On_Move_0) TValue += 16;
+								if (pInfo(peer)->Open_On_Move_1) TValue += 32;
+								if (pInfo(peer)->Aura_0) TValue += 64;
+								if (pInfo(peer)->Aura_1) TValue += 128;
+								if (pInfo(peer)->Aura_1st_0) TValue += 256;
+								if (pInfo(peer)->Aura_1st_1) TValue += 1024;
+								if (pInfo(peer)->Aura_2nd_0) TValue += 256 * 2;
+								if (pInfo(peer)->Aura_2nd_1) TValue += 1024 * 2;
+								if (pInfo(peer)->Aura_3rd_0) TValue += 256 * 3;
+								if (pInfo(peer)->Aura_3rd_1) TValue += 1024 * 3;
+								pInfo(peer)->Cape_Value = TValue;
+								update_clothes(peer);
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|dialog_cernuous_mask") != string::npos) {
+							if (cch.find("buttonClicked|restore_default") != string::npos) {
+								pInfo(peer)->Aura_Season = 2;
+								pInfo(peer)->Trail_Season = 2;
+								update_clothes(peer);
+								break;
+							}
+							else {
+								pInfo(peer)->Aura_Season = (atoi(explode("\n", explode("checkbox_none0|", cch)[1])[0].c_str()) == 1 ? 0 : (atoi(explode("\n", explode("checkbox_spring0|", cch)[1])[0].c_str()) == 1 ? 1 : (atoi(explode("\n", explode("checkbox_summer0|", cch)[1])[0].c_str()) == 1 ? 2 : (atoi(explode("\n", explode("checkbox_autumn0|", cch)[1])[0].c_str()) == 1 ? 3 : (atoi(explode("\n", explode("checkbox_winter0|", cch)[1])[0].c_str()) == 1 ? 4 : 0)))));
+								pInfo(peer)->Trail_Season = (atoi(explode("\n", explode("checkbox_none1|", cch)[1])[0].c_str()) == 1 ? 0 : (atoi(explode("\n", explode("checkbox_spring1|", cch)[1])[0].c_str()) == 1 ? 1 : (atoi(explode("\n", explode("checkbox_summer1|", cch)[1])[0].c_str()) == 1 ? 2 : (atoi(explode("\n", explode("checkbox_autumn1|", cch)[1])[0].c_str()) == 1 ? 3 : (atoi(explode("\n", explode("checkbox_winter1|", cch)[1])[0].c_str()) == 1 ? 4 : 0)))));
+								update_clothes(peer);
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|sessionlength_edit") != string::npos) {
+							try {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									if (pInfo(peer)->tankIDName != world_->owner_name) break;
+									world_->World_Time = (atoi(explode("\n", explode("checkbox_5|", cch)[1])[0].c_str()) == 1 ? 5 : (atoi(explode("\n", explode("checkbox_10|", cch)[1])[0].c_str()) == 1 ? 10 : (atoi(explode("\n", explode("checkbox_20|", cch)[1])[0].c_str()) == 1 ? 20 : (atoi(explode("\n", explode("checkbox_30|", cch)[1])[0].c_str()) == 1 ? 30 : (atoi(explode("\n", explode("checkbox_40|", cch)[1])[0].c_str()) == 1 ? 40 : (atoi(explode("\n", explode("checkbox_50|", cch)[1])[0].c_str()) == 1 ? 50 : (atoi(explode("\n", explode("checkbox_60|", cch)[1])[0].c_str()) == 1 ? 60 : 0)))))));
+									gamepacket_t p;
+									p.Insert("OnTalkBubble"); p.Insert(pInfo(peer)->netID);
+									p.Insert((world_->World_Time == 0 ? "World Timer limit removed!" : "World Timer limit set to `2" + to_string(world_->World_Time) + " minutes``."));
+									p.Insert(0); p.Insert(0); p.CreatePacket(peer);
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == world_->name) {
+											if (pInfo(currentPeer)->tankIDName != world_->owner_name && world_->World_Time != 0) {
+												pInfo(currentPeer)->World_Timed = time(nullptr) + (world_->World_Time * 60);
+												pInfo(currentPeer)->WorldTimed = true;
+											}
+										}
+									}
+								}
+							}
+							catch (out_of_range) {
+								cout << "Server error invalid (out of range) on " + cch << endl;
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|worldcategory") != string::npos) {
+							string Cat = "None";
+							if (cch.find("buttonClicked|cat10") != string::npos) {
+								Cat = "Storage";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|10\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat11") != string::npos) {
+								Cat = "Story";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|11\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat12") != string::npos) {
+								Cat = "Trade";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|12\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat14") != string::npos) {
+								Cat = "Puzzle";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|14\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat15") != string::npos) {
+								Cat = "Music";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|15\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat0") != string::npos) {
+								Cat = "None";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|0\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat1") != string::npos) {
+								Cat = "Adventure";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|1\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat2") != string::npos) {
+								Cat = "Art";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|2\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat3") != string::npos) {
+								Cat = "Farm";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|3\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat4") != string::npos) {
+								Cat = "Game";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|4\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat5") != string::npos) {
+								Cat = "Information";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|5\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat6") != string::npos) {
+								Cat = "Parkour";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|6\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat7") != string::npos) {
+								Cat = "Roleplay";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|7\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat8") != string::npos) {
+								Cat = "Shop";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|8\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|cat9") != string::npos) {
+								Cat = "Social";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSet World Category``|left|3802|\nembed_data|chosencat|9\nadd_textbox|Are you sure you want to change your world's category to " + Cat + "?|left|\nadd_smalltext|`4Warning:`` Changing your category will delete all ratings on your world .|left|\nend_dialog|worldcategory|Nevermind|Change Category|");
+								p.CreatePacket(peer);
+								break;
+							}
+							else {
+								int Category = atoi(explode("\n", explode("chosencat|", cch)[1])[0].c_str());
+								if (Category < 0 or Category > 15) break;
+								string Cat = "None";
+								if (Category == 0) Cat = "None"; if (Category == 1) Cat = "Adventure"; if (Category == 2) Cat = "Art"; if (Category == 3) Cat = "Farm"; if (Category == 4) Cat = "Game"; if (Category == 5) Cat = "Information"; if (Category == 15) Cat = "Music"; if (Category == 6) Cat = "Parkour"; if (Category == 14) Cat = "Puzzle"; if (Category == 7) Cat = "Roleplay"; if (Category == 8) Cat = "Shop"; if (Category == 9) Cat = "Social"; if (Category == 10) Cat = "Storage"; if (Category == 11) Cat = "Story"; if (Category == 12) Cat = "Trade";
+								try {
+									string name_ = pInfo(peer)->world;
+									vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+									if (p != worlds.end()) {
+										World* world_ = &worlds[p - worlds.begin()];
+										if (pInfo(peer)->tankIDName != world_->owner_name) break;
+										world_->World_Rating = 0;
+										world_->Category = Cat;
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("This world has been moved to the '" + Cat + "' category! Everyone, please type `2/rate`` to rate it from 1-5 stars.");
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(currentPeer)->world == world_->name) {
+												p.CreatePacket(currentPeer);
+											}
+										}
+									}
+								}
+								catch (out_of_range) {
+									cout << "Server error invalid (out of range) on " + cch << endl;
+									break;
+								}
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|bannerbandolier") != string::npos) {
+							if (cch.find("buttonClicked|patternpicker") != string::npos) {
+								string dialog = "";
+								if (pInfo(peer)->Banner_Flag == 0) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5838|";
+								else if (pInfo(peer)->Banner_Flag == 1) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5844|";
+								else if (pInfo(peer)->Banner_Flag == 2) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5848|";
+								else if (pInfo(peer)->Banner_Flag == 3) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5846|";
+								else if (pInfo(peer)->Banner_Flag == 4) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5842|";
+								dialog += "\nadd_spacer|small|\nadd_textbox|Pick a pattern for your banner.|left|\nadd_spacer|small|";
+								dialog += "\nadd_label_with_icon_button|big|Harlequin|left|5838|pattern_1|\nadd_spacer|small|";
+								dialog += "\nadd_label_with_icon_button|big|Slant|left|5844|pattern_2|\nadd_spacer|small|";
+								dialog += "\nadd_label_with_icon_button|big|Stripe|left|5848|pattern_3|\nadd_spacer|small|";
+								dialog += "\nadd_label_with_icon_button|big|Panel|left|5846|pattern_4|\nadd_spacer|small|";
+								dialog += "\nadd_label_with_icon_button|big|Cross|left|5842|pattern_5|\nadd_spacer|small|";
+								dialog += "\nend_dialog|bannerbandolier|Cancel||\nadd_quick_exit|";
+								gamepacket_t p;
+								p.Insert("OnDialogRequest"), p.Insert(dialog), p.CreatePacket(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|pattern_") != string::npos) {
+								int Pattern = atoi(cch.substr(49 + 22, cch.length() - 49 + 22).c_str());
+								pInfo(peer)->CBanner_Item = pInfo(peer)->Banner_Item;
+								pInfo(peer)->CBanner_Flag = Pattern - 1;
+								SendBannerBandolier2(peer);
+								break;
+							}
+							else if (cch.find("buttonClicked|reset") != string::npos) {
+								pInfo(peer)->CBanner_Item = 0; pInfo(peer)->CBanner_Flag = 0; pInfo(peer)->Banner_Item = 0; pInfo(peer)->Banner_Flag = 0;
+								SendBannerBandolier2(peer);
+								break;
+							}
+							else if (!(cch.find("buttonClicked|patternpicker") != string::npos || cch.find("buttonClicked|pattern_") != string::npos || cch.find("\nbanneritem|") != string::npos)) {
+								if (pInfo(peer)->CBanner_Item != 0) pInfo(peer)->Banner_Item = pInfo(peer)->CBanner_Item;
+								if (pInfo(peer)->CBanner_Flag != 0) pInfo(peer)->Banner_Flag = pInfo(peer)->CBanner_Flag;
+								pInfo(peer)->CBanner_Item = 0; pInfo(peer)->CBanner_Flag = 0;
+								update_clothes(peer);
+								break;
+							}
+							else {
+								pInfo(peer)->CBanner_Flag = pInfo(peer)->CBanner_Flag;
+								pInfo(peer)->CBanner_Item = atoi(explode("\n", explode("banneritem|", cch)[1])[0].c_str());
+								SendBannerBandolier2(peer);
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|magic_compass") != string::npos) {
+							if (cch.find("buttonClicked|clear_item") != string::npos) {
+								pInfo(peer)->Magnet_Item = 0;
+								update_clothes(peer);
+								break;
+							}
+							else {
+								pInfo(peer)->Magnet_Item = atoi(explode("\n", explode("magic_compass_item|", cch)[1])[0].c_str());
+								update_clothes(peer);
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|dialog_rift_wings") != string::npos) {
+							if (cch.find("buttonClicked|button_manual") != string::npos) {
+								SendDialogRiftWings(peer, true);
+								break;
+							}
+							else if (cch.find("buttonClicked|restore_default") != string::npos) {
+								// Rift Wings
+								pInfo(peer)->Wing_Time_Change = true;
+								pInfo(peer)->Wing_Cycle_Time = 30;
+								// Wings 1
+								pInfo(peer)->Wing_R_0 = 93, pInfo(peer)->Wing_G_0 = 22, pInfo(peer)->Wing_B_0 = 200, pInfo(peer)->Wing_Metal_R_0 = 220, pInfo(peer)->Wing_Metal_G_0 = 72, pInfo(peer)->Wing_Metal_B_0 = 255;
+								pInfo(peer)->Open_Wing_0 = false, pInfo(peer)->Closed_Wing_0 = false, pInfo(peer)->Trail_On_0 = true, pInfo(peer)->Stamp_Particle_0 = true, pInfo(peer)->Trail_1st_0 = true, pInfo(peer)->Trail_2nd_0 = false, pInfo(peer)->Trail_3rd_0 = false, pInfo(peer)->Material_1st_0 = true, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = false;
+								// Wings 2
+								pInfo(peer)->Wing_R_1 = 137, pInfo(peer)->Wing_G_1 = 30, pInfo(peer)->Wing_B_1 = 43, pInfo(peer)->Wing_Metal_R_1 = 34, pInfo(peer)->Wing_Metal_G_1 = 35, pInfo(peer)->Wing_Metal_B_1 = 65;
+								pInfo(peer)->Open_Wing_1 = false, pInfo(peer)->Closed_Wing_1 = false, pInfo(peer)->Trail_On_1 = true, pInfo(peer)->Stamp_Particle_1 = false, pInfo(peer)->Trail_1st_1 = false, pInfo(peer)->Trail_2nd_1 = true, pInfo(peer)->Trail_3rd_1 = false, pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = true, pInfo(peer)->Material_3rd_1 = false;
+								// Total
+								pInfo(peer)->Wing_Value = 104912, pInfo(peer)->Wing_Color_0_Value = 3356909055, pInfo(peer)->Wing_Metal_0_Value = 4282965247, pInfo(peer)->Wing_Color_1_Value = 723421695, pInfo(peer)->Wing_Metal_1_Value = 1059267327;
+								// End
+								update_clothes(peer);
+								break;
+							}
+							else {
+								try {
+									pInfo(peer)->Wing_Time_Change = atoi(explode("\n", explode("checkbox_time_cycle|", cch)[1])[0].c_str()) == 1 ? true : false;
+									if (!is_number(explode("\n", explode("text_input_time_cycle|", cch)[1])[0])) break;
+									pInfo(peer)->Wing_Cycle_Time = atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str());
+									{ // Wing_1
+										{
+											auto Wings_Color0 = explode(",", explode("\n", explode("text_input_wings_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_wings_color0|", cch)[1])[0].c_str());
+											if (Wings_Color0.size() != 3 || t_.size() < 2 || Wings_Color0[0] == "" || Wings_Color0[1] == "" || Wings_Color0[2] == "" || Wings_Color0[0].empty() || Wings_Color0[1].empty() || Wings_Color0[2].empty()) {
+												SendDialogRiftWings(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Wings_Color0[0]) || !is_number(Wings_Color0[1]) || !is_number(Wings_Color0[2]) || atoi(Wings_Color0[0].c_str()) > 255 || atoi(Wings_Color0[1].c_str()) > 255 || atoi(Wings_Color0[2].c_str()) > 255 || atoi(Wings_Color0[0].c_str()) < 0 || atoi(Wings_Color0[1].c_str()) < 0 || atoi(Wings_Color0[2].c_str()) < 0) {
+												SendDialogRiftWings(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Wing_R_0 = atoi(Wings_Color0.at(0).c_str());
+											pInfo(peer)->Wing_G_0 = atoi(Wings_Color0.at(1).c_str());
+											pInfo(peer)->Wing_B_0 = atoi(Wings_Color0.at(2).c_str());
+											pInfo(peer)->Wing_Color_0_Value = 255 + (((256 * atoi(Wings_Color0.at(0).c_str())) + atoi(Wings_Color0.at(1).c_str()) * 65536) + atoi(Wings_Color0.at(2).c_str()) * (long long int)16777216);
+										}
+										{
+											auto Metal_Color0 = explode(",", explode("\n", explode("text_input_metal_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_metal_color0|", cch)[1])[0].c_str());
+											if (Metal_Color0.size() != 3 || t_.size() < 2 || Metal_Color0[0] == "" || Metal_Color0[1] == "" || Metal_Color0[2] == "" || Metal_Color0[0].empty() || Metal_Color0[1].empty() || Metal_Color0[2].empty()) {
+												SendDialogRiftWings(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Metal_Color0[0]) || !is_number(Metal_Color0[1]) || !is_number(Metal_Color0[2]) || atoi(Metal_Color0[0].c_str()) > 255 || atoi(Metal_Color0[1].c_str()) > 255 || atoi(Metal_Color0[2].c_str()) > 255 || atoi(Metal_Color0[0].c_str()) < 0 || atoi(Metal_Color0[1].c_str()) < 0 || atoi(Metal_Color0[2].c_str()) < 0) {
+												SendDialogRiftWings(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Wing_Metal_R_0 = atoi(Metal_Color0.at(0).c_str());
+											pInfo(peer)->Wing_Metal_G_0 = atoi(Metal_Color0.at(1).c_str());
+											pInfo(peer)->Wing_Metal_B_0 = atoi(Metal_Color0.at(2).c_str());
+											pInfo(peer)->Wing_Metal_0_Value = 255 + (((256 * atoi(Metal_Color0.at(0).c_str())) + atoi(Metal_Color0.at(1).c_str()) * 65536) + atoi(Metal_Color0.at(2).c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Open_Wing_0 = atoi(explode("\n", explode("checkbox_open_wings0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Closed_Wing_0 = atoi(explode("\n", explode("checkbox_closed_wings0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Stamp_Particle_0 = atoi(explode("\n", explode("checkbox_stamp_particle0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_On_0 = atoi(explode("\n", explode("checkbox_trail0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_1st_0 = atoi(explode("\n", explode("checkbox_trail_1st0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_2nd_0 = atoi(explode("\n", explode("checkbox_trail_2nd0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_3rd_0 = atoi(explode("\n", explode("checkbox_trail_3rd0|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+									{ // Wing_2
+										{
+											auto Wings_Color1 = explode(",", explode("\n", explode("text_input_wings_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_wings_color1|", cch)[1])[0].c_str());
+											if (Wings_Color1.size() != 3 || t_.size() < 2 || Wings_Color1[0] == "" || Wings_Color1[1] == "" || Wings_Color1[2] == "" || Wings_Color1[0].empty() || Wings_Color1[1].empty() || Wings_Color1[2].empty()) {
+												SendDialogRiftWings(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Wings_Color1[0]) || !is_number(Wings_Color1[1]) || !is_number(Wings_Color1[2]) || atoi(Wings_Color1[0].c_str()) > 255 || atoi(Wings_Color1[1].c_str()) > 255 || atoi(Wings_Color1[2].c_str()) > 255 || atoi(Wings_Color1[0].c_str()) < 0 || atoi(Wings_Color1[1].c_str()) < 0 || atoi(Wings_Color1[2].c_str()) < 0) {
+												SendDialogRiftWings(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Wing_R_1 = atoi(Wings_Color1.at(0).c_str());
+											pInfo(peer)->Wing_G_1 = atoi(Wings_Color1.at(1).c_str());
+											pInfo(peer)->Wing_B_1 = atoi(Wings_Color1.at(2).c_str());
+											pInfo(peer)->Wing_Color_1_Value = 255 + (((256 * atoi(Wings_Color1.at(0).c_str())) + atoi(Wings_Color1.at(1).c_str()) * 65536) + atoi(Wings_Color1.at(2).c_str()) * (long long int)16777216);
+										}
+										{
+											auto Metal_Color1 = explode(",", explode("\n", explode("text_input_metal_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_metal_color1|", cch)[1])[0].c_str());
+											if (Metal_Color1.size() != 3 || t_.size() < 2 || Metal_Color1[0] == "" || Metal_Color1[1] == "" || Metal_Color1[2] == "" || Metal_Color1[0].empty() || Metal_Color1[1].empty() || Metal_Color1[2].empty()) {
+												SendDialogRiftWings(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Metal_Color1[0]) || !is_number(Metal_Color1[1]) || !is_number(Metal_Color1[2]) || atoi(Metal_Color1[0].c_str()) > 255 || atoi(Metal_Color1[1].c_str()) > 255 || atoi(Metal_Color1[2].c_str()) > 255 || atoi(Metal_Color1[0].c_str()) < 0 || atoi(Metal_Color1[1].c_str()) < 0 || atoi(Metal_Color1[2].c_str()) < 0) {
+												SendDialogRiftWings(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Wing_Metal_R_1 = atoi(Metal_Color1.at(0).c_str());
+											pInfo(peer)->Wing_Metal_G_1 = atoi(Metal_Color1.at(1).c_str());
+											pInfo(peer)->Wing_Metal_B_1 = atoi(Metal_Color1.at(2).c_str());
+											pInfo(peer)->Wing_Metal_1_Value = 255 + (((256 * atoi(Metal_Color1.at(0).c_str())) + atoi(Metal_Color1.at(1).c_str()) * 65536) + atoi(Metal_Color1.at(2).c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Open_Wing_1 = atoi(explode("\n", explode("checkbox_open_wings1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Closed_Wing_1 = atoi(explode("\n", explode("checkbox_closed_wings1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Stamp_Particle_1 = atoi(explode("\n", explode("checkbox_stamp_particle1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_On_1 = atoi(explode("\n", explode("checkbox_trail1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_1st_1 = atoi(explode("\n", explode("checkbox_trail_1st1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_2nd_1 = atoi(explode("\n", explode("checkbox_trail_2nd1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Trail_3rd_1 = atoi(explode("\n", explode("checkbox_trail_3rd1|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+								}
+								catch (...) {
+									break;
+								}
+								int Feathers_0 = atoi(explode("\n", explode("checkbox_material_1st0|", cch)[1])[0].c_str()), Blades_0 = atoi(explode("\n", explode("checkbox_material_2nd0|", cch)[1])[0].c_str()), Scael_0 = atoi(explode("\n", explode("checkbox_material_3rd0|", cch)[1])[0].c_str());
+								int Feathers_1 = atoi(explode("\n", explode("checkbox_material_1st1|", cch)[1])[0].c_str()), Blades_1 = atoi(explode("\n", explode("checkbox_material_2nd1|", cch)[1])[0].c_str()), Scael_1 = atoi(explode("\n", explode("checkbox_material_3rd1|", cch)[1])[0].c_str());
+								int TValue = 0;
+								if (Feathers_0 == 0 && Blades_0 == 0 && Scael_0 == 0) {
+									SendDialogRiftWings(peer, false, "You need to select one material for style 1");
+									break;
+								}
+								if (Feathers_1 == 0 && Blades_1 == 0 && Scael_1 == 0) {
+									SendDialogRiftWings(peer, false, "You need to select one material for style 2");
+									break;
+								}
+								if (Feathers_0 == 1 && Feathers_1 == 1) {
+									TValue += 20480;
+									pInfo(peer)->Material_1st_0 = true, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = true, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Feathers_0 == 1 && Blades_1 == 1) {
+									TValue += 20480 + 16384;
+									pInfo(peer)->Material_1st_0 = true, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = true, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Feathers_0 == 1 && Scael_1 == 1) {
+									TValue += 20480 + (16384 * 2);
+									pInfo(peer)->Material_1st_0 = true, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = true;
+								}
+								if (Blades_0 == 1 && Feathers_1 == 1) {
+									TValue += 20480 + 4096;
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = true, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = true, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Blades_0 == 1 && Blades_1 == 1) {
+									TValue += 20480 + 4096 + 16384;
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = true, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = true, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Blades_0 == 1 && Scael_1 == 1) {
+									TValue += 20480 + 4096 + (16384 * 2);
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = true, pInfo(peer)->Material_3rd_0 = false;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = true;
+								}
+								if (Scael_0 == 1 && Feathers_1 == 1) {
+									TValue += 20480 + (4096 * 2);
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = true;
+									pInfo(peer)->Material_1st_1 = true, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Scael_0 == 1 && Blades_1 == 1) {
+									TValue += 20480 + (4096 * 2) + 16384;
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = true;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = true, pInfo(peer)->Material_3rd_1 = false;
+								}
+								if (Scael_0 == 1 && Scael_1 == 1) {
+									TValue += 20480 + (4096 * 2) + (16384 * 2);
+									pInfo(peer)->Material_1st_0 = false, pInfo(peer)->Material_2nd_0 = false, pInfo(peer)->Material_3rd_0 = true;
+									pInfo(peer)->Material_1st_1 = false, pInfo(peer)->Material_2nd_1 = false, pInfo(peer)->Material_3rd_1 = true;
+								}
+								if (pInfo(peer)->Wing_Time_Change) TValue += 65536;
+								if (pInfo(peer)->Open_Wing_0) TValue += 1;
+								if (pInfo(peer)->Open_Wing_1) TValue += 2;
+								if (pInfo(peer)->Closed_Wing_0) TValue += 4;
+								if (pInfo(peer)->Closed_Wing_1) TValue += 8;
+								if (pInfo(peer)->Trail_On_0) TValue += 16;
+								if (pInfo(peer)->Trail_On_1) TValue += 32;
+								if (pInfo(peer)->Stamp_Particle_0) TValue += 64;
+								if (pInfo(peer)->Stamp_Particle_1) TValue += 128;
+								if (pInfo(peer)->Trail_1st_0) TValue += 256;
+								if (pInfo(peer)->Trail_1st_1) TValue += 1024;
+								if (pInfo(peer)->Trail_2nd_0) TValue += 256 * 2;
+								if (pInfo(peer)->Trail_2nd_1) TValue += 1024 * 2;
+								if (pInfo(peer)->Trail_3rd_0) TValue += 256 * 3;
+								if (pInfo(peer)->Trail_3rd_1) TValue += 1024 * 3;
+								pInfo(peer)->Wing_Value = TValue;
+								update_clothes(peer);
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|dialog_infinity_crown") != string::npos) {
+							if (cch.find("buttonClicked|button_manual") != string::npos) {
+								SendDialogInfinityCrown(peer, true);
+								break;
+							}
+							else if (cch.find("buttonClicked|restore_default") != string::npos) {
+								// Infinity Crown
+								pInfo(peer)->Crown_Time_Change = true;
+								pInfo(peer)->Crown_Cycle_Time = 15;
+								// Crown 1
+								pInfo(peer)->Base_R_0 = 255, pInfo(peer)->Base_G_0 = 255, pInfo(peer)->Base_B_0 = 255;
+								pInfo(peer)->Gem_R_0 = 255, pInfo(peer)->Gem_G_0 = 0, pInfo(peer)->Gem_B_0 = 255;
+								pInfo(peer)->Crystal_R_0 = 0, pInfo(peer)->Crystal_G_0 = 205, pInfo(peer)->Crystal_B_0 = 249;
+								pInfo(peer)->Crown_Floating_Effect_0 = false, pInfo(peer)->Crown_Laser_Beam_0 = true, pInfo(peer)->Crown_Crystals_0 = true, pInfo(peer)->Crown_Rays_0 = true;
+								// Crown 2
+								pInfo(peer)->Base_R_1 = 255, pInfo(peer)->Base_G_1 = 200, pInfo(peer)->Base_B_1 = 37;
+								pInfo(peer)->Gem_R_1 = 255, pInfo(peer)->Gem_G_1 = 0, pInfo(peer)->Gem_B_1 = 64;
+								pInfo(peer)->Crystal_R_1 = 26, pInfo(peer)->Crystal_G_1 = 45, pInfo(peer)->Crystal_B_1 = 140;
+								pInfo(peer)->Crown_Floating_Effect_1 = false, pInfo(peer)->Crown_Laser_Beam_1 = true, pInfo(peer)->Crown_Crystals_1 = true, pInfo(peer)->Crown_Rays_1 = true;
+								// Total
+								pInfo(peer)->Crown_Value = 1768716607;
+								pInfo(peer)->Crown_Value_0_0 = 4294967295, pInfo(peer)->Crown_Value_0_1 = 4278255615, pInfo(peer)->Crown_Value_0_2 = 4190961919;
+								pInfo(peer)->Crown_Value_1_0 = 633929727, pInfo(peer)->Crown_Value_1_1 = 1073807359, pInfo(peer)->Crown_Value_1_2 = 2351766271;
+								// End
+								update_clothes(peer);
+								break;
+							}
+							else {
+								try {
+									pInfo(peer)->Crown_Time_Change = atoi(explode("\n", explode("checkbox_time_cycle|", cch)[1])[0].c_str()) == 1 ? true : false;
+									if (!is_number(explode("\n", explode("text_input_time_cycle|", cch)[1])[0])) break;
+									pInfo(peer)->Crown_Cycle_Time = atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str());
+									{ // Crown 1
+										pInfo(peer)->Crown_Floating_Effect_0 = atoi(explode("\n", explode("checkbox_floating0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										{
+											auto Crown_Base_0 = explode(",", explode("\n", explode("text_input_base_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_base_color0|", cch)[1])[0].c_str());
+											if (Crown_Base_0.size() != 3 || t_.size() < 2 || Crown_Base_0[0] == "" || Crown_Base_0[1] == "" || Crown_Base_0[2] == "" || Crown_Base_0[0].empty() || Crown_Base_0[1].empty() || Crown_Base_0[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Crown_Base_0[0]) || !is_number(Crown_Base_0[1]) || !is_number(Crown_Base_0[2]) || atoi(Crown_Base_0[0].c_str()) > 255 || atoi(Crown_Base_0[1].c_str()) > 255 || atoi(Crown_Base_0[2].c_str()) > 255 || atoi(Crown_Base_0[0].c_str()) < 0 || atoi(Crown_Base_0[1].c_str()) < 0 || atoi(Crown_Base_0[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Base_R_0 = atoi(Crown_Base_0[0].c_str());
+											pInfo(peer)->Base_G_0 = atoi(Crown_Base_0[1].c_str());
+											pInfo(peer)->Base_B_0 = atoi(Crown_Base_0[2].c_str());
+											pInfo(peer)->Crown_Value_0_0 = (long long int)(255 + (256 * pInfo(peer)->Base_R_0) + pInfo(peer)->Base_G_0 * 65536 + (pInfo(peer)->Base_B_0 * (long long int)16777216));
+										}
+										{
+											pInfo(peer)->Crown_Laser_Beam_0 = atoi(explode("\n", explode("checkbox_laser_beam0|", cch)[1])[0].c_str()) == 1 ? true : false;
+											auto Crown_Gem_0 = explode(",", explode("\n", explode("text_input_gem_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_gem_color0|", cch)[1])[0].c_str());
+											if (Crown_Gem_0.size() != 3 || t_.size() < 2 || Crown_Gem_0[0] == "" || Crown_Gem_0[1] == "" || Crown_Gem_0[2] == "" || Crown_Gem_0[0].empty() || Crown_Gem_0[1].empty() || Crown_Gem_0[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Crown_Gem_0[0]) || !is_number(Crown_Gem_0[1]) || !is_number(Crown_Gem_0[2]) || atoi(Crown_Gem_0[0].c_str()) > 255 || atoi(Crown_Gem_0[1].c_str()) > 255 || atoi(Crown_Gem_0[2].c_str()) > 255 || atoi(Crown_Gem_0[0].c_str()) < 0 || atoi(Crown_Gem_0[1].c_str()) < 0 || atoi(Crown_Gem_0[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Gem_R_0 = atoi(Crown_Gem_0[0].c_str());
+											pInfo(peer)->Gem_G_0 = atoi(Crown_Gem_0[1].c_str());
+											pInfo(peer)->Gem_B_0 = atoi(Crown_Gem_0[2].c_str());
+											pInfo(peer)->Crown_Value_0_1 = 255 + (256 * atoi(Crown_Gem_0[0].c_str())) + atoi(Crown_Gem_0[1].c_str()) * 65536 + (atoi(Crown_Gem_0[2].c_str()) * (long long int)16777216);
+										}
+										{
+											auto Crown_Crystal_0 = explode(",", explode("\n", explode("text_input_crystal_color0|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_crystal_color0|", cch)[1])[0].c_str());
+											if (Crown_Crystal_0.size() != 3 || t_.size() < 2 || Crown_Crystal_0[0] == "" || Crown_Crystal_0[1] == "" || Crown_Crystal_0[2] == "" || Crown_Crystal_0[0].empty() || Crown_Crystal_0[1].empty() || Crown_Crystal_0[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											};
+											if (!is_number(Crown_Crystal_0[0]) || !is_number(Crown_Crystal_0[1]) || !is_number(Crown_Crystal_0[2]) || atoi(Crown_Crystal_0[0].c_str()) > 255 || atoi(Crown_Crystal_0[1].c_str()) > 255 || atoi(Crown_Crystal_0[2].c_str()) > 255 || atoi(Crown_Crystal_0[0].c_str()) < 0 || atoi(Crown_Crystal_0[1].c_str()) < 0 || atoi(Crown_Crystal_0[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Crystal_R_0 = atoi(Crown_Crystal_0[0].c_str());
+											pInfo(peer)->Crystal_G_0 = atoi(Crown_Crystal_0[1].c_str());
+											pInfo(peer)->Crystal_B_0 = atoi(Crown_Crystal_0[2].c_str());
+											pInfo(peer)->Crown_Value_0_2 = 255 + (256 * atoi(Crown_Crystal_0[0].c_str())) + atoi(Crown_Crystal_0[1].c_str()) * 65536 + (atoi(Crown_Crystal_0[2].c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Crown_Crystals_0 = atoi(explode("\n", explode("checkbox_crystals0|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Crown_Rays_0 = atoi(explode("\n", explode("checkbox_rays0|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+									{ // Crown 2
+										pInfo(peer)->Crown_Floating_Effect_1 = atoi(explode("\n", explode("checkbox_floating1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										{
+											auto Crown_Base_1 = explode(",", explode("\n", explode("text_input_base_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_base_color1|", cch)[1])[0].c_str());
+											if (Crown_Base_1.size() != 3 || t_.size() < 2 || Crown_Base_1[0] == "" || Crown_Base_1[1] == "" || Crown_Base_1[2] == "" || Crown_Base_1[0].empty() || Crown_Base_1[1].empty() || Crown_Base_1[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Crown_Base_1[0]) || !is_number(Crown_Base_1[1]) || !is_number(Crown_Base_1[2]) || atoi(Crown_Base_1[0].c_str()) > 255 || atoi(Crown_Base_1[1].c_str()) > 255 || atoi(Crown_Base_1[2].c_str()) > 255 || atoi(Crown_Base_1[0].c_str()) < 0 || atoi(Crown_Base_1[1].c_str()) < 0 || atoi(Crown_Base_1[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Base_R_1 = atoi(Crown_Base_1[0].c_str());
+											pInfo(peer)->Base_G_1 = atoi(Crown_Base_1[1].c_str());
+											pInfo(peer)->Base_B_1 = atoi(Crown_Base_1[2].c_str());
+											pInfo(peer)->Crown_Value_1_1 = 255 + (256 * atoi(Crown_Base_1[0].c_str())) + atoi(Crown_Base_1[1].c_str()) * 65536 + (atoi(Crown_Base_1[2].c_str()) * (long long int)16777216);
+										}
+										{
+											pInfo(peer)->Crown_Laser_Beam_1 = atoi(explode("\n", explode("checkbox_laser_beam1|", cch)[1])[0].c_str()) == 1 ? true : false;
+											auto Crown_Gem_1 = explode(",", explode("\n", explode("text_input_gem_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_gem_color1|", cch)[1])[0].c_str());
+											if (Crown_Gem_1.size() != 3 || t_.size() < 2 || Crown_Gem_1[0] == "" || Crown_Gem_1[1] == "" || Crown_Gem_1[2] == "" || Crown_Gem_1[0].empty() || Crown_Gem_1[1].empty() || Crown_Gem_1[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Crown_Gem_1[0]) || !is_number(Crown_Gem_1[1]) || !is_number(Crown_Gem_1[2]) || atoi(Crown_Gem_1[0].c_str()) > 255 || atoi(Crown_Gem_1[1].c_str()) > 255 || atoi(Crown_Gem_1[2].c_str()) > 255 || atoi(Crown_Gem_1[0].c_str()) < 0 || atoi(Crown_Gem_1[1].c_str()) < 0 || atoi(Crown_Gem_1[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Gem_R_1 = atoi(Crown_Gem_1[0].c_str());
+											pInfo(peer)->Gem_G_1 = atoi(Crown_Gem_1[1].c_str());
+											pInfo(peer)->Gem_B_1 = atoi(Crown_Gem_1[2].c_str());
+											pInfo(peer)->Crown_Value_1_1 = 255 + (256 * atoi(Crown_Gem_1[0].c_str())) + atoi(Crown_Gem_1[1].c_str()) * 65536 + (atoi(Crown_Gem_1[2].c_str()) * (long long int)16777216);
+										}
+										{
+											auto Crown_Crystal_1 = explode(",", explode("\n", explode("text_input_crystal_color1|", cch)[1])[0].c_str());
+											vector<string> t_ = explode(",", explode("\n", explode("text_input_crystal_color1|", cch)[1])[0].c_str());
+											if (Crown_Crystal_1.size() != 3 || t_.size() < 2 || Crown_Crystal_1[0] == "" || Crown_Crystal_1[1] == "" || Crown_Crystal_1[2] == "" || Crown_Crystal_1[0].empty() || Crown_Crystal_1[1].empty() || Crown_Crystal_1[2].empty()) {
+												SendDialogInfinityCrown(peer, false, "you need to enter an RGB (Red, Blue, Green) value");
+												break;
+											}
+											if (!is_number(Crown_Crystal_1[0]) || !is_number(Crown_Crystal_1[1]) || !is_number(Crown_Crystal_1[2]) || atoi(Crown_Crystal_1[0].c_str()) > 255 || atoi(Crown_Crystal_1[1].c_str()) > 255 || atoi(Crown_Crystal_1[2].c_str()) > 255 || atoi(Crown_Crystal_1[0].c_str()) < 0 || atoi(Crown_Crystal_1[1].c_str()) < 0 || atoi(Crown_Crystal_1[2].c_str()) < 0) {
+												SendDialogInfinityCrown(peer, false, "you need to enter values betwwen 0 and 255");
+												break;
+											}
+											pInfo(peer)->Crystal_R_1 = atoi(Crown_Crystal_1[0].c_str());
+											pInfo(peer)->Crystal_G_1 = atoi(Crown_Crystal_1[1].c_str());
+											pInfo(peer)->Crystal_B_1 = atoi(Crown_Crystal_1[2].c_str());
+											pInfo(peer)->Crown_Value_1_2 = 255 + (256 * atoi(Crown_Crystal_1[0].c_str())) + atoi(Crown_Crystal_1[1].c_str()) * 65536 + (atoi(Crown_Crystal_1[2].c_str()) * (long long int)16777216);
+										}
+										pInfo(peer)->Crown_Crystals_1 = atoi(explode("\n", explode("checkbox_crystals1|", cch)[1])[0].c_str()) == 1 ? true : false;
+										pInfo(peer)->Crown_Rays_1 = atoi(explode("\n", explode("checkbox_rays1|", cch)[1])[0].c_str()) == 1 ? true : false;
+									}
+								}
+								catch (...) {
+									break;
+								}
+								int Total_Value = 1768716288;
+								if (pInfo(peer)->Crown_Time_Change) Total_Value += 256;
+								if (pInfo(peer)->Crown_Floating_Effect_0) Total_Value += 64;
+								if (pInfo(peer)->Crown_Laser_Beam_0) Total_Value += 1;
+								if (pInfo(peer)->Crown_Crystals_0) Total_Value += 4;
+								if (pInfo(peer)->Crown_Rays_0) Total_Value += 16;
+								if (pInfo(peer)->Crown_Floating_Effect_1) Total_Value += 128;
+								if (pInfo(peer)->Crown_Laser_Beam_1) Total_Value += 2;
+								if (pInfo(peer)->Crown_Crystals_1) Total_Value += 8;
+								if (pInfo(peer)->Crown_Rays_1) Total_Value += 32;
+								pInfo(peer)->Crown_Value = Total_Value;
+								update_clothes(peer);
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|wfcalendar_reward_list_dialog") != string::npos) {
+							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
+							if (cch.find("buttonClicked|goto_maindialog") != string::npos) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									WorldBlock* block_ = &world_->blocks[x_ + (y_ * 100)];
+									if (world_->owner_name == pInfo(peer)->tankIDName || pInfo(peer)->dev || guild_access(peer, world_->guild_id) || find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) {
+										string Day = "";
+										Day += "\nadd_button_with_icon|calendarSystem_1|`$Day 1``|" + string(block_->pr >= 1 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_2|`$Day 2``|" + string(block_->pr >= 2 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_3|`$Day 3``|" + string(block_->pr >= 3 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_4|`$Day 4``|" + string(block_->pr >= 4 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_5|`$Day 5``|" + string(block_->pr >= 5 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_6|`$Day 6``|" + string(block_->pr >= 6 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_7|`$Day 7``|" + string(block_->pr >= 7 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_8|`$Day 8``|" + string(block_->pr >= 8 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_9|`$Day 9``|" + string(block_->pr >= 9 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_10|`$Day 10``|" + string(block_->pr >= 10 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_11|`$Day 11``|" + string(block_->pr >= 11 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_12|`$Day 12``|" + string(block_->pr >= 12 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_13|`$Day 13``|" + string(block_->pr >= 13 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_14|`$Day 14``|" + string(block_->pr >= 14 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_15|`$Day 15``|" + string(block_->pr >= 15 ? "noflags|6292||" : "frame|9202||");
+										Day += "\nadd_button_with_icon|calendarSystem_16|`$Day 16``|" + string(block_->pr >= 16 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_17|`$Day 17``|" + string(block_->pr >= 17 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_18|`$Day 18``|" + string(block_->pr >= 18 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_19|`$Day 19``|" + string(block_->pr >= 19 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_20|`$Day 20``|" + string(block_->pr >= 20 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_21|`$Day 21``|" + string(block_->pr >= 21 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_22|`$Day 22``|" + string(block_->pr >= 22 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_23|`$Day 23``|" + string(block_->pr >= 23 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_24|`$Day 24``|" + string(block_->pr >= 24 ? "noflags|6292||" : "frame|10486||");
+										Day += "\nadd_button_with_icon|calendarSystem_25|`$Day 25``|" + string(block_->pr >= 25 ? "noflags|6292||" : "frame|9202||");
+										gamepacket_t p(500);
+										p.Insert("OnDialogRequest");
+										p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wWinterfest Calendar - 2022``|left|12986|\nadd_textbox|Tap on a button below to view the `2rewards`` available on that day.|left|\nadd_spacer|small|\ntext_scaling_string|Defibrillators|" + Day + "\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nembed_data|tilex|" + to_string(x_) + "\nembed_data|tiley|" + to_string(y_) + "\nadd_button|cancel|Close|noflags|0|0|\nend_dialog|wfcalendar_dailyrewards|||\nadd_quick_exit|\n");
+										p.CreatePacket(peer);
+									}
+								}
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|wfcalendar_dailyrewards") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 7) break;
+							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
+							if (cch.find("buttonClicked|calendarSystem_") != string::npos) {
+								string test = explode("\n", t_[7])[0].c_str();
+								replace_str(test, "calendarSystem_", "");
+								int System = atoi(test.c_str());
+								string Prizes = "";
+								if (System == 1 || System == 5 || System == 9 || System == 13 || System == 18 || System == 22) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wCrystal of Hoa``|left|11244|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wCrystal Block Seed``|left|263|\nadd_label_with_icon|small|`wEzio's Armguards``|left|7088|\nadd_label_with_icon|small|`wEzio's Boots``|left|7094|\nadd_label_with_icon|small|`wFrozen Fountain``|left|11520|\nadd_label_with_icon|small|`wLuxurious Wall Clock``|left|7864|\nadd_label_with_icon|small|`wDroid Pet``|left|8976|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wSnowy Tree Block``|left|10486|\nadd_label_with_icon|small|`wGavle Goat``|left|10444|\nadd_label_with_icon|small|`wFuturistic Sunglasses``|left|11202|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wNutcracker Boots``|left|7498|\nadd_label_with_icon|small|`wSnowy Fence``|left|10488|\nadd_label_with_icon|small|`wKitty Block``|left|8280|\nadd_label_with_icon|small|`wDoggy Block``|left|8278|\nadd_spacer|small|";
+								if (System == 2 || System == 6 || System == 10 || System == 14 || System == 19 || System == 23) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wZodiac Wings``|left|10054|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wSnowtopian``|left|9202|\nadd_label_with_icon|small|`wGlowing Nose``|left|1384|\nadd_label_with_icon|small|`wConveyor Block``|left|11192|\nadd_label_with_icon|small|`wPuffy Blue Jacket``|left|5446|\nadd_label_with_icon|small|`wChristmas Pudding Block``|left|11514|\nadd_label_with_icon|small|`wGem Hair``|left|8480|\nadd_label_with_icon|small|`wCaduceaxe``|left|8554|\nadd_label_with_icon|small|`wNutcracker Pants``|left|7496|\nadd_label_with_icon|small|`wEzio's Beard``|left|7090|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wVile Vial - Ecto-Bones``|left|8546|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wSnowy Fence``|left|10488|\nadd_label_with_icon|small|`wChocolate Block (x5)``|left|2564|\nadd_label_with_icon|small|`wWinter Gift (x5)``|left|1360|\nadd_spacer|small|";
+								if (System == 3 || System == 7 || System == 11 || System == 16 || System == 20 || System == 24) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wZodiac Ring``|left|11158|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wNutcracker Hat``|left|7490|\nadd_label_with_icon|small|`wSurgWorld Blast``|left|8556|\nadd_label_with_icon|small|`wPigeon``|left|10258|\nadd_label_with_icon|small|`wFrozen Fountain``|left|11520|\nadd_label_with_icon|small|`wPet Trainer Whistle``|left|3676|\nadd_label_with_icon|small|`wEzio's Trousers``|left|7086|\nadd_label_with_icon|small|`wEzio's Vest``|left|7082|\nadd_label_with_icon|small|`wWaist Tied Sweater - Green``|left|10036|\nadd_label_with_icon|small|`wWaist Tied Sweater - Yellow``|left|10042|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wFuturistic Sunglasses``|left|11202|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wPuffy Blue Jacket``|left|5446|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wGavle Goat``|left|10444|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_spacer|small|";
+								if (System == 4 || System == 8 || System == 12 || System == 17 || System == 21) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wLightning Horns``|left|12302|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wSnowtopian``|left|9202|\nadd_label_with_icon|small|`wStar Tool Droid``|left|6414|\nadd_label_with_icon|small|`wEzio's Hood``|left|7080|\nadd_label_with_icon|small|`wSnowfrost's Suit``|left|7422|\nadd_label_with_icon|small|`wPrehistoric Dragon Claw``|left|7758|\nadd_label_with_icon|small|`wRobot Legs``|left|6384|\nadd_label_with_icon|small|`wAxolotl Slippers``|left|10032|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wChristmas Pudding Block``|left|11514|\nadd_label_with_icon|small|`wConveyor Block``|left|11192|\nadd_label_with_icon|small|`wSnowball (x10)``|left|1368|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wS'mores Block (x2)``|left|5382|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wWinter Gift (x5)``|left|1360|\nadd_spacer|small|";
+								if (System == 15) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wCute Mutant Plonky``|left|11080|\nadd_label_with_icon|small|`wCute Mutant Boogle``|left|11082|\nadd_label_with_icon|small|`wEzio's Hair``|left|7092|\nadd_label_with_icon|small|`wPegasus Lance``|left|10922|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wWinter Swept Hair``|left|10440|\nadd_label_with_icon|small|`wCrystal Block Seed``|left|263|\nadd_label_with_icon|small|`wCute Mutant Wonky``|left|11078|\nadd_label_with_icon|small|`wSad Snowfrost's Mask``|left|11500|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wRiding Eagle Owl``|left|9184|\nadd_label_with_icon|small|`wHay Cart``|left|7096|\nadd_label_with_icon|small|`wStar Dragon Claw``|left|7760|\nadd_label_with_icon|small|`wWaist Tied Sweater - Red``|left|10038|\nadd_label_with_icon|small|`wSnowfrost's Mask``|left|7420|\nadd_label_with_icon|small|`wWaist Tied Sweater - Blue``|left|10040|\nadd_label_with_icon|small|`wSnowfrost's Top Hat``|left|7418|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wSpring-Loaded Fists``|left|8960|\nadd_label_with_icon|small|`wExo Suit Helmet``|left|9692|\nadd_label_with_icon|small|`wSpeeder``|left|8948|\nadd_label_with_icon|small|`wFlower Headband``|left|8722|\nadd_spacer|small|";
+								if (System == 25) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wThe Beast with a Thousand Eyes Mask``|left|8358|\nadd_label_with_icon|small|`wBeowulf's Blade``|left|11084|\nadd_label_with_icon|small|`wGiant Eye Head``|left|8372|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wRadical Rider``|left|10878|\nadd_label_with_icon|small|`wFrosty Wings``|left|9182|\nadd_label_with_icon|small|`wCandy Cane Cruiser``|left|11468|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wSilverstar Bow``|left|5456|\nadd_label_with_icon|small|`wEzio's Cape``|left|7084|\nadd_label_with_icon|small|`wSnowfrost's Candy Cane Blade``|left|7424|\nadd_label_with_icon|small|`wSnowflake Eyes``|left|7396|\nadd_label_with_icon|small|`wWinter Light Launcher``|left|10442|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wDouble Growsaber``|left|812|\nadd_label_with_icon|small|`wRed Growsaber``|left|802|\nadd_label_with_icon|small|`wGrowboard``|left|1758|\nadd_label_with_icon|small|`wStrange Eyes``|left|9370|\nadd_label_with_icon|small|`wDragon Throne``|left|7738|\nadd_label_with_icon|small|`wRiding Chicken``|left|5018|\nadd_label_with_icon|small|`wHowly Hat``|left|8468|\nadd_label_with_icon|small|`wSurgWorld Blast``|left|8556|\nadd_label_with_icon|small|`wGourmet Dragon Claw``|left|7752|\nadd_label_with_icon|small|`wCupcake Hat``|left|8474|\nadd_spacer|small|";
+								gamepacket_t p(500);
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wDay " + to_string(System) + " Rewards``|left|12986|\nadd_spacer|small|\nadd_textbox|" + string(System == 15 || System == 25 ? "Merry Winterfest and a happy new reward. You have a chance of obtaining the following items:" : "You have a chance of obtaining the following items:") + "|left|\nadd_spacer|small|" + Prizes + "\nembed_data|tilex|" + to_string(x_) + "\nembed_data|tiley|" + to_string(y_) + "\nadd_button|goto_maindialog|Thanks for the info!|0|0|\nend_dialog|wfcalendar_reward_list_dialog|||\nadd_quick_exit|\n");
+								p.CreatePacket(peer);
+								break;
+							}
+							break;
+						}
+						if (cch.find("action|dialog_return\ndialog_name|xenonite_edit") != string::npos) {
+							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
+							try {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									WorldBlock* block_ = &world_->blocks.at(x_ + (y_ * 100));
+									uint16_t t_ = (block_->fg ? block_->fg : block_->bg);
+									if (not items.at(t_).xeno) break;
+									string owner_name = world_->owner_name, user_name = pInfo(peer)->tankIDName;
+									if (owner_name != user_name and not pInfo(peer)->dev and not world_->owner_name.empty()) {
+										if (block_->locked) {
+											WorldBlock* check_lock = &world_->blocks.at(block_->lock_origin);
+											if (check_lock->owner_name != pInfo(peer)->tankIDName) break;
+										}
+										else {
+											break;
+										}
+									}
+									int Xeno_1 = atoi(explode("\n", explode("checkbox_force_dbl|", cch)[1])[0].c_str());
+									int Xeno_2 = atoi(explode("\n", explode("checkbox_block_dbl|", cch)[1])[0].c_str());
+									int Xeno_3 = atoi(explode("\n", explode("checkbox_force_hig|", cch)[1])[0].c_str());
+									int Xeno_4 = atoi(explode("\n", explode("checkbox_block_hig|", cch)[1])[0].c_str());
+									int Xeno_5 = atoi(explode("\n", explode("checkbox_force_asb|", cch)[1])[0].c_str());
+									int Xeno_6 = atoi(explode("\n", explode("checkbox_block_asb|", cch)[1])[0].c_str());
+									int Xeno_7 = atoi(explode("\n", explode("checkbox_force_pun|", cch)[1])[0].c_str());
+									int Xeno_8 = atoi(explode("\n", explode("checkbox_block_pun|", cch)[1])[0].c_str());
+									int Xeno_9 = atoi(explode("\n", explode("checkbox_force_lng|", cch)[1])[0].c_str());
+									int Xeno_10 = atoi(explode("\n", explode("checkbox_block_lng|", cch)[1])[0].c_str());
+									int Xeno_11 = atoi(explode("\n", explode("checkbox_force_spd|", cch)[1])[0].c_str());
+									int Xeno_12 = atoi(explode("\n", explode("checkbox_block_spd|", cch)[1])[0].c_str());
+									int Xeno_13 = atoi(explode("\n", explode("checkbox_force_lngb|", cch)[1])[0].c_str());
+									int Xeno_14 = atoi(explode("\n", explode("checkbox_block_lngb|", cch)[1])[0].c_str());
+									int Xeno_15 = atoi(explode("\n", explode("checkbox_force_spiw|", cch)[1])[0].c_str());
+									int Xeno_16 = atoi(explode("\n", explode("checkbox_block_spiw|", cch)[1])[0].c_str());
+									int Xeno_17 = atoi(explode("\n", explode("checkbox_force_pdmg|", cch)[1])[0].c_str());
+									int Xeno_18 = atoi(explode("\n", explode("checkbox_block_pdmg|", cch)[1])[0].c_str());
+									int Xeno_19 = atoi(explode("\n", explode("checkbox_block_pwr|", cch)[1])[0].c_str());
+									world_->X_1 = Xeno_1 == 1 ? true : false;
+									world_->X_2 = Xeno_2 == 1 and !world_->X_1 ? true : false;
+									world_->X_3 = Xeno_3 == 1 ? true : false;
+									world_->X_4 = Xeno_4 == 1 and !world_->X_3 ? true : false;
+									world_->X_5 = Xeno_5 == 1 ? true : false;
+									world_->X_6 = Xeno_6 == 1 and !world_->X_5 ? true : false;
+									world_->X_7 = Xeno_7 == 1 ? true : false;
+									world_->X_8 = Xeno_8 == 1 and !world_->X_7 ? true : false;
+									world_->X_9 = Xeno_9 == 1 ? true : false;
+									world_->X_10 = Xeno_10 == 1 and !world_->X_9 ? true : false;
+									world_->X_11 = Xeno_11 == 1 ? true : false;
+									world_->X_12 = Xeno_12 == 1 and !world_->X_11 ? true : false;
+									world_->X_13 = Xeno_13 == 1 ? true : false;
+									world_->X_14 = Xeno_14 == 1 and !world_->X_13 ? true : false;
+									world_->X_15 = Xeno_15 == 1 ? true : false;
+									world_->X_16 = Xeno_16 == 1 and !world_->X_15 ? true : false;
+									world_->X_17 = Xeno_17 == 1 ? true : false;
+									world_->X_18 = Xeno_18 == 1 and !world_->X_17 ? true : false;
+									world_->X_19 = Xeno_19 == 1 ? true : false;
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+											Send_Xenonite_Update(currentPeer);
+										}
+									}
+								}
+							}
+							catch (out_of_range) {
+								cout << "Server error invalid (out of range) on " + cch << endl;
+								break;
 							}
 							break;
 						}
@@ -1137,27 +2170,28 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|blast\nitemID|") != string::npos) {
-							string world = cch.substr(57, cch.length() - 57).c_str();
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							int blast = atoi(explode("\n", t_[3])[0].c_str()), got = 0;
-							modify_inventory(peer, blast, got);
-							if (got == 0) break;
-							replace_str(world, "\n", "");
-							transform(world.begin(), world.end(), world.begin(), ::toupper);
-							if (find_if(worlds.begin(), worlds.end(), [world](const World& a) { return a.name == world; }) != worlds.end() || not check_blast(world) || _access_s(("database/worlds/" + world + "_.json").c_str(), 0) == 0) {
-								gamepacket_t p;
-								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("That world name already exists. You'll have to be more original. Maybe add some numbers after it?"), p.Insert(0), p.Insert(1), p.CreatePacket(peer);
-							}
-							else {
-								if (modify_inventory(peer, blast, got = -1) == 0) {
-									create_world_blast(peer, world, blast);
-									if (blast == 830) modify_inventory(peer, 834, got = -100);
-									join_world(peer, world);
-									gamepacket_t p(750), p2(750);
-									p.Insert("OnConsoleMessage"), p.Insert("** `5" + pInfo(peer)->tankIDName + " activates a " + items[blast].name + "! ``**"), p.CreatePacket(peer);
-									p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("** `5" + pInfo(peer)->tankIDName + " activates a " + items[blast].name + "! ``**"), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
+						else if (cch.find("action|dialog_return\ndialog_name|blast\nname|") != string::npos) {
+							if (pInfo(peer)->lastchoosenitem == 830 || pInfo(peer)->lastchoosenitem == 9164 || pInfo(peer)->lastchoosenitem == 9602 || pInfo(peer)->lastchoosenitem == 942 || pInfo(peer)->lastchoosenitem == 1060 || pInfo(peer)->lastchoosenitem == 1136 || pInfo(peer)->lastchoosenitem == 1402 || pInfo(peer)->lastchoosenitem == 9582 || pInfo(peer)->lastchoosenitem == 1532 || pInfo(peer)->lastchoosenitem == 3562 || pInfo(peer)->lastchoosenitem == 4774 || pInfo(peer)->lastchoosenitem == 7380 || pInfo(peer)->lastchoosenitem == 7588 || pInfo(peer)->lastchoosenitem == 8556) {
+								int blast = pInfo(peer)->lastchoosenitem, got = 0;
+								modify_inventory(peer, blast, got);
+								if (got == 0) break;
+								string world = cch.substr(44, cch.length() - 44).c_str();
+								replace_str(world, "\n", "");
+								transform(world.begin(), world.end(), world.begin(), ::toupper);
+								if (find_if(worlds.begin(), worlds.end(), [world](const World& a) { return a.name == world; }) != worlds.end() || not check_blast(world) || _access_s(("worlds/" + world + "_.json").c_str(), 0) == 0) {
+									gamepacket_t p;
+									p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("That world name already exists. You'll have to be more original. Maybe add some numbers after it?"), p.Insert(0), p.Insert(1), p.CreatePacket(peer);
+								}
+								else {
+									if (modify_inventory(peer, blast, got = -1) == 0) {
+										create_world_blast(peer, world, blast);
+										if (blast == 830) modify_inventory(peer, 834, got = -100);
+										join_world(peer, world);
+										pInfo(peer)->worlds_owned.push_back(world);
+										gamepacket_t p(750), p2(750);
+										p.Insert("OnConsoleMessage"), p.Insert("** `5" + pInfo(peer)->tankIDName + " activates a " + items[blast].name + "! ``**"), p.CreatePacket(peer);
+										p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("** `5" + pInfo(peer)->tankIDName + " activates a " + items[blast].name + "! ``**"), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
+									}
 								}
 							}
 							break;
@@ -1299,7 +2333,7 @@ int main(int argc, char* argv[]) {
 							gamepacket_t p;
 							p.Insert("OnDialogRequest");
 							if (btn == "12345") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wCrazy Jim's Quest Emporium``|left|3902|\nadd_textbox|HEEEEYYY there Growtopian! I'm Crazy Jim, and my quests are so crazy they're KERRRRAAAAZZY!! And that is clearly very crazy, so please, be cautious around them. What can I do ya for, partner?|left|\nadd_button|chc1_1|Daily Quest|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
-							else if (btn == "53785") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSales-Man``|left|4358|\nadd_textbox|It is I, Sales-Man, savior of the wealthy! Let me rescue you from your riches. What would you like to buy today?|left|\nadd_button|chc4_1|Surgery Items|noflags|0|0|\nadd_button|chc3_1|Zombie Defense Items|noflags|0|0|\nadd_button|chc2_1|Blue Gem Lock|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
+							else if (btn == "53785") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSales-Man``|left|4358|\nadd_textbox|It is I, Sales-Man, savior of the wealthy! Let me rescue you from your riches. What would you like to buy today?|left|\nadd_button|chc4_1|Surgery Items|noflags|0|0|"/*\nadd_button|chc3_1|Zombie Defense Items|noflags|0|0|*/"\nadd_button|chc2_1|Blue Gem Lock|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 							else if (btn == "chc1_1") {
 								if (today_day != pInfo(peer)->dd) {
 									int haveitem1 = 0, haveitem2 = 0, received = 0;
@@ -1317,37 +2351,39 @@ int main(int argc, char* argv[]) {
 									modify_inventory(peer, item2, haveitem2);
 									if (haveitem1 >= item1c && haveitem2 >= item2c) received = 1;
 									if (received == 1) {
+										if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+											pInfo(peer)->quest_progress += received;
+											if (pInfo(peer)->quest_progress >= 28) {
+												pInfo(peer)->quest_progress = 28;
+												gamepacket_t p;
+												p.Insert("OnTalkBubble");
+												p.Insert(pInfo(peer)->netID);
+												p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+												p.Insert(0), p.Insert(0);
+												p.CreatePacket(peer);
+											}
+										}
 										pInfo(peer)->dd = today_day;
 										modify_inventory(peer, item1, remove *= item1c);
 										modify_inventory(peer, item2, remove2 *= item2c);
 										modify_inventory(peer, 1486, giveitem);
-										{
-											{
-												string name_ = pInfo(peer)->world;
-												vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-												if (p != worlds.end()) {
-													World* world_ = &worlds[p - worlds.begin()];
-													PlayerMoving data_{};
-													data_.x = pInfo(peer)->lastwrenchx * 32 + 16, data_.y = pInfo(peer)->lastwrenchy * 32 + 16;
-													data_.packetType = 19, data_.plantingTree = 500;
-													data_.punchX = 1486, data_.punchY = pInfo(peer)->netID;
-													int32_t to_netid = pInfo(peer)->netID;
-													BYTE* raw = packPlayerMoving(&data_);
-													raw[3] = 5;
-													memcpy(raw + 8, &to_netid, 4);
-													for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-														if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-														if (pInfo(currentPeer)->world == world_->name) {
-															send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-														}
-													}
-													delete[] raw;
-												}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+												gamepacket_t p3, p4;
+												p3.Insert("OnParticleEffect");
+												p3.Insert(198);
+												p3.Insert((float)pInfo(peer)->x + 10, (float)pInfo(peer)->y + 16);
+												p4.Insert("OnTalkBubble");
+												p4.Insert(pInfo(peer)->netID);
+												p4.Insert("Thanks, pardner! Have 1 `2Growtoken`w!");
+												p4.Insert(0), p4.Insert(0);
+												p3.CreatePacket(currentPeer), p4.CreatePacket(peer);
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("[`6You jammed " + to_string(item1c) + " " + items[item1].name + " and " + to_string(item2c) + " " + items[item2].name + " into the phone, and 1 `2Growtoken`` popped out!``]");
+												p.CreatePacket(peer);
 											}
-											gamepacket_t p;
-											p.Insert("OnConsoleMessage");
-											p.Insert("[`6You jammed " + to_string(item1c) + " " + items[item1].name + " and " + to_string(item2c) + " " + items[item2].name + " into the phone, and 1 `2Growtoken`` popped out!``]");
-											p.CreatePacket(peer);
 										}
 									}
 								}
@@ -1503,38 +2539,6 @@ int main(int argc, char* argv[]) {
 							p.CreatePacket(peer);
 							break;
 						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|ancientdialog\n\n") {
-							int b = b = pInfo(peer)->ances;
-							int cb1 = 0;
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`9Ancient Goddess|left|5086|\nadd_textbox|`9You are upgrading ances to " + items[ancesupgradeto(peer, b)].name + "\nadd_textbox|`$I will gift a part of my power to enhance your miraculous|\nadd_textbox|`$device, but this exchange, you must bring me the answers|\nadd_textbox|`$to my riddles:|\nadd_spacer|small|" + ancientdialog(peer, b, cb1));
-							p.CreatePacket(peer);
-						}
-						else if (cch == "action|dialog_return\ndialog_name|tolol12\nbuttonClicked|ancientaltar\n\n") {
-							int b = b = pInfo(peer)->ances;
-							int c = 0, loler12 = 0, ex = 0, n = ancesupgradeto(peer, b), d = ancientprice(b);
-
-							if (modify_inventory(peer, n, ex += 1) == -1) {
-								gamepacket_t p;
-								p.Insert("OnDialogRequest");
-								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`9Ancient Goddess|left|5086|\nadd_spacer|small|\nadd_textbox|`$Something wrong...|\nadd_spacer|small|\nend_dialog||Return|");
-								p.CreatePacket(peer);
-								packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-							}
-							else {
-								modify_inventory(peer, 1796, d);
-								modify_inventory(peer, b, loler12 -= 1);
-								gamepacket_t p;
-								p.Insert("OnDialogRequest");
-								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`9Ancient Goddess|left|5086|\nadd_spacer|small|\nadd_textbox|`6You've pleased me, clever one.|\nadd_spacer|small|\nend_dialog||Return|");
-								p.CreatePacket(peer);
-								gamepacket_t p2(0, pInfo(peer)->netID);
-								p2.Insert("OnPlayPositioned");
-								p2.Insert("audio/change_clothes.wav");
-								p2.CreatePacket(peer);
-							}
-						}
 						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoneybuy\n\n") {
 							if (pInfo(peer)->offergems <= 0) break;
 							if (pInfo(peer)->gtwl >= pInfo(peer)->offergems) {
@@ -1567,6 +2571,7 @@ int main(int argc, char* argv[]) {
 							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoney\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Buy Gems``|left|9438|\n\nadd_spacer|small|\nadd_textbox|`11 Hoshi `wis `925,000 `wgems!``|\nadd_textbox|`wYou have `1" + to_string(pInfo(peer)->gtwl) + " Hoshi`w, how much hoshi you want to spend for gems? `7(Enter hoshi amount)``|\nadd_text_input|gemspurchase|`1Hoshi``||30|\nend_dialog|shopgemsconfirm|Cancel|Checkout|\n");
 							if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|toplist\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`8Top worlds today``|left|394|\nadd_spacer|" + top_list + "\nadd_button|wotwlistback|`oBack`|NOFLAGS|0|0|\nend_dialog|top|Close||\n");
 							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopgrowtoken\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Growtoken``|left|1486|\nadd_spacer|small|\n\nadd_textbox|`7Please choose packet you want to purchase:``|left|\n\nadd_spacer|small|\nadd_button_with_icon|gtoken_packet_1|`7Buy Packet 1|staticYellowFrame|1486|5|\nadd_button_with_icon|gtoken_packet_2|`7Buy Packet 2|staticYellowFrame|1486|10|\nadd_button_with_icon|gtoken_packet_3|`7Buy Packet 3|staticYellowFrame|1486|50|\nadd_button_with_icon|gtoken_packet_4|`7Buy Packet 4|staticYellowFrame|6802||\nadd_button_with_icon||END_LIST|noflags|0|0|\nadd_button|shop|`0Back``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							if (cch == "action|dialog_return\ndialog_name|socialportal\nbuttonClicked|onlinepointhub\n\n") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`0Online Star Hub``|left|7074|\nadd_spacer|small|\nadd_textbox|Welcome to Online Star HUB! Do you have any Online Star? You can buy items from me with them.|left|\nadd_smalltext|`2You can earn 1 Online Star every 5 minutes just by playing the game.``|left|\nadd_spacer|small|\nadd_textbox|You have `1" + setGems(pInfo(peer)->opc) + " ``Online Star``.|left|\ntext_scaling_string|99,000OPC|" + opc_list + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_button|chc0|OK|noflags|0|0|\nnend_dialog|gazette||OK|");
 							//if (cch == "action|claimprogressbar\n")p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wAbout Valentine's Event``|left|384|\nadd_spacer|small|\nadd_textbox|During Valentine's Week you will gain points for opening Golden Booty Chests. Claim enough points to earn bonus rewards.|left|\nadd_spacer|small|\nadd_textbox|Current Progress: " + to_string(pInfo(peer)->booty_broken) + "/100|left|\nadd_spacer|small|\nadd_textbox|Reward:|left|\nadd_label_with_icon|small|Super Golden Booty Chest|left|9350|\nadd_smalltext|             - 4x chance of getting a Golden Heart Crystal when opening!|left|\nend_dialog|valentines_quest||OK|\n");
 							p.CreatePacket(peer);
 							break;
@@ -1581,7 +2586,7 @@ int main(int argc, char* argv[]) {
 						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankglory\n\n" || cch == "action|shoprankglory\n\n" || cch == "action|shoprankglory\n" || cch == "action|shoprankglory") {
 							gamepacket_t p(500);
 							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Road to Glory``|left|9436|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `125 Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive 100k gems instantly, get up to 4m gems everytime you leveled up``|left|\nadd_spacer|\nadd_button|shoprankglorybuy|`0Purchase for `125 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Road to Glory``|left|9436|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `125 Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive 100k gems instantly, get up to 4M gems by leveling up, and Unlock Account Security feature.``|left|\nadd_spacer|\nadd_button|shoprankglorybuy|`0Purchase for `125 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
 							p.CreatePacket(peer);
 							break;
 						}
@@ -1874,7 +2879,7 @@ int main(int argc, char* argv[]) {
 							if (item <= 0 || item >= items.size() || items[item].oprc == 0) continue;
 							gamepacket_t p;
 							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase " + items[item].name + "``|left|" + to_string(items[item].id) + "|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `3" + setGems(items[item].oprc) + "`` `0OPC``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\n\nadd_textbox|`6Other information:``|left|\nadd_smalltext|" + items[item].description + "|left|\nadd_spacer|\nadd_button|opop_item_" + to_string(item) + "|`0Purchase `9" + setGems(items[item].oprc) + " OPC``|noflags|0|0||small|\n\nadd_quick_exit|\nnend_dialog|gazette||OK|");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase " + items[item].name + "``|left|" + to_string(items[item].id) + "|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `3" + setGems(items[item].oprc) + "`` `0Online Star``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\n\nadd_textbox|`6Other information:``|left|\nadd_smalltext|" + items[item].description + "|left|\nadd_spacer|\nadd_button|opop_item_" + to_string(item) + "|`0Purchase `1" + setGems(items[item].oprc) + " Star``|noflags|0|0||small|\n\nadd_quick_exit|\nnend_dialog|gazette||OK|");
 							p.CreatePacket(peer);
 							break;
 						}
@@ -1884,6 +2889,18 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->opc >= items[item].oprc) {
 								int c_ = 1;
 								if (modify_inventory(peer, item, c_) == 0) {
+									if (item == 1486 && pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress++;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									pInfo(peer)->opc -= items[item].oprc;
 									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
 									gamepacket_t p;
@@ -1897,6 +2914,12 @@ int main(int argc, char* argv[]) {
 									p.Insert("No inventory space.");
 									p.CreatePacket(peer);
 								}
+							}
+							else {
+								gamepacket_t p;
+								p.Insert("OnConsoleMessage");
+								p.Insert("You don't have enough `1Online Star`` to purchase this item.");
+								p.CreatePacket(peer);
 							}
 							break;
 						}
@@ -2062,111 +3085,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\nchangeitem1|") != string::npos) {
-							int item1 = atoi(cch.substr(54, cch.length() - 54).c_str());
-							pInfo(peer)->t_item1 = item1;
-							if (items[item1].blockType != CLOTHING) {
-								gamepacket_t p;
-								p.Insert("OnTalkBubble");
-								p.Insert(pInfo(peer)->netID);
-								p.Insert("The transmutabooth does not accept this item!");
-								p.Insert(0);
-								p.Insert(0);
-								p.CreatePacket(peer);
-								continue;
-							}
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`0\nadd_label_with_icon|big|`wTransmutabooth``|left|9170|\nadd_textbox|`oOkay, this is the item that will get NEW visuals - remember, you'll keep its mods, but it'll look different!|\nadd_spacer|small|\nadd_label_with_icon|small|" + items[pInfo(peer)->t_item1].name + "|noflags|" + to_string(pInfo(peer)->t_item1) + "|\nadd_spacer|small|\nadd_textbox|`oNow you'll pick the NEW look for this item. Same slot only!``|\nadd_spacer|small|\nadd_item_picker|changeitem2|`wPick Transmute Target!``|Choose the item for your NEW look!|\nadd_spacer|small|\nend_dialog|transmut|Cancel|Update|\n");
-							p.CreatePacket(peer);
-							break;
-						}
 
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\nbuttonClicked|remtransmute\n") != string::npos) {
-							if (pInfo(peer)->t_item1 == 0 && pInfo(peer)->t_item2 == 0) break;
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`0\nadd_label_with_icon|big|`wTransmutabooth``|left|9170|\nadd_spacer|small|\nadd_textbox|`oDone with this transmutation? Want your item back? Here's where	you can break them apart!``|left|\nadd_spacer|small|\nadd_textbox|`oHere's the old item that got a new look:``|\nadd_label_with_icon|small|" + items[pInfo(peer)->t_item1].name + "|noflags|" + to_string(pInfo(peer)->t_item1) + "|\nadd_spacer|small|\nadd_textbox|`oHere's the item that gave it look (and is held here):``|\nadd_label_with_icon|small|" + items[pInfo(peer)->t_item2].name + "|noflags|" + to_string(pInfo(peer)->t_item2) + "|\nadd_spacer|small|\nadd_button|entr|`4END TRANSMUTATION!``|noflags|0|0|\nadd_spacer|small|\nend_dialog|transmut|Cancel||\n");
-							p.CreatePacket(peer);
-							break;
-						}
-
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\nbuttonClicked|dotransmute\n") != string::npos) {
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`0\nadd_label_with_icon|big|`wTransmutabooth``|left|9170|\nadd_spacer|small|\nadd_textbox|`oTired of how an item looks but want to keep its abilities? Here is where you can overwrite its appearance with that of another item from the SAME slot!``|left|\nadd_spacer|small|\nadd_textbox|`oTo begin, you'll need to pick the item you want to change (its mods will remain)...``|left|\nadd_spacer|small|\nadd_item_picker|changeitem1|Start Transmuting!|Choose the item you want to change!|\nadd_spacer|small|\nend_dialog|transmut|Cancel||\n");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\nchangeitem2|") != string::npos) {
-							int item2 = atoi(cch.substr(54, cch.length() - 54).c_str());
-							pInfo(peer)->t_item2 = item2;
-							if (items[item2].blockType != CLOTHING) {
-								gamepacket_t p;
-								p.Insert("OnTalkBubble");
-								p.Insert(pInfo(peer)->netID);
-								p.Insert("The transmutabooth does not accept this item!");
-								p.Insert(0);
-								p.Insert(0);
-								p.CreatePacket(peer);
-								continue;
-							}
-							if (items[pInfo(peer)->t_item2].clothType != items[pInfo(peer)->t_item1].clothType) {
-								gamepacket_t p;
-								p.Insert("OnTalkBubble");
-								p.Insert(pInfo(peer)->netID);
-								p.Insert("You only can transmute items belonging to the same clothing slot!");
-								p.Insert(0);
-								p.Insert(0);
-								p.CreatePacket(peer);
-								continue;
-							}
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`0\nadd_label_with_icon|big|`wTransmutabooth``|left|9170|\nadd_textbox|`oThis item is about to get a NEW look!|\nadd_label_with_icon|small|" + items[pInfo(peer)->t_item1].name + "|noflags|" + to_string(pInfo(peer)->t_item1) + "|\nadd_textbox|`oThis is the item it's going to look like:``|\nadd_label_with_icon|small|" + items[pInfo(peer)->t_item2].name + "|noflags|" + to_string(pInfo(peer)->t_item2) + "|\nadd_textbox|`oReady to go? Remember, your `4" + items[pInfo(peer)->t_item2].name + " `owill be HELD in the transmutabooth to	power this change untill you end the transmutation!|\nadd_spacer|small|\nend_dialog|transmut|Cancel|Update|\n");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\nbuttonClicked|entr") != string::npos) {
-							/*pInfo(peer)->t_item1 = 0;
-							pInfo(peer)->t_item2 = 0;*/
-							//SendCmd(peer, "/remtransmute", false);
-							pInfo(peer)->t_item1 = 0;
-							pInfo(peer)->t_item2 = 0;
-							gamepacket_t p;
-							p.Insert("OnTalkBubble");
-							p.Insert(pInfo(peer)->netID);
-							p.Insert("You have removed the transmutation!");
-							p.Insert(0);
-							p.Insert(0);
-							p.CreatePacket(peer);
-							update_clothes(peer);
-							//update_clothes(peer);
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|transmut\n") != string::npos) {
-							if (items[pInfo(peer)->t_item2].clothType != items[pInfo(peer)->t_item1].clothType) {
-								gamepacket_t p2;
-								p2.Insert("OnTalkBubble");
-								p2.Insert(pInfo(peer)->netID);
-								p2.Insert("You only can transmute items belonging to the same clothing slot!");
-								p2.Insert(0);
-								p2.Insert(0);
-								p2.CreatePacket(peer);
-								continue;
-							}
-							if (items[pInfo(peer)->t_item2].blockType != CLOTHING || items[pInfo(peer)->t_item1].blockType != CLOTHING) {
-								gamepacket_t p;
-								p.Insert("OnTalkBubble");
-								p.Insert(pInfo(peer)->netID);
-								p.Insert("The transmutabooth does not accept this item!");
-								p.Insert(0);
-								p.Insert(0);
-								p.CreatePacket(peer);
-								continue;
-							}
-							update_clothes(peer);
-							break;
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|donation_box_edit\nitemid|") != string::npos) {
 							int item = atoi(cch.substr(58, cch.length() - 58).c_str()), got = 0;
 							modify_inventory(peer, item, got);
@@ -2379,6 +3298,39 @@ int main(int argc, char* argv[]) {
 							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|geiger_reward\n\n") geiger_reward_show(peer);
 							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|fishing_reward\n\n") 	fishing_reward_show(peer);
 							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|builder_reward\n\n")	builder_reward_show(peer);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_eq_aura\nbutton_item_selection|") != string::npos) {
+							int item = atoi(cch.substr(70, cch.length() - 70).c_str());
+							if (item > 0 && item < items.size()) {
+								if (items[item].toggleable) {
+									pInfo(peer)->eq_a_1 = item;
+									gamepacket_t p;
+									p.Insert("OnDialogRequest");
+									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wEQ Aura``|left|12634|\nadd_spacer|small|\nadd_textbox|Play music wherever you are with the EQ Aura! Choose a musical block from your inventory to play the song.|left|\nadd_spacer|small|" + (string(pInfo(peer)->eq_a_1 != 0 ? "\nadd_label_with_icon|small|`w" + items[pInfo(peer)->eq_a_1].name + "``|left|" + to_string(pInfo(peer)->eq_a_1) + "|\nadd_spacer|small|" : "")) + "\nadd_item_picker|button_item_selection|`wChange Block Item``|Choose Musical Block Item!|\nadd_button|restore_default|`wRemove Block Item``|noflags|0|0|\nadd_spacer|small|\nadd_spacer|small|\nend_dialog|dialog_eq_aura|Cancel|Update|\nadd_quick_exit|");
+									p.CreatePacket(peer);
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnDialogRequest");
+									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wEQ Aura``|left|12634|\nadd_spacer|small|\nadd_spacer|small|\nadd_textbox|`4Invalid item! You can only use musical block items! Please choose something else.``|left|\nadd_spacer|small|\nadd_textbox|Play music wherever you are with the EQ Aura! Choose a musical block from your inventory to play the song.|left|\nadd_spacer|small|" + (string(pInfo(peer)->eq_a != 0 ? "\nadd_label_with_icon|small|`w" + items[pInfo(peer)->eq_a].name + "``|left|" + to_string(pInfo(peer)->eq_a) + "|\nadd_spacer|small|" : "")) + "\nadd_item_picker|button_item_selection|`wChange Block Item``|Choose Musical Block Item!|\nadd_button|restore_default|`wRemove Block Item``|noflags|0|0|\nadd_spacer|small|\nadd_spacer|small|\nend_dialog|dialog_eq_aura|Cancel|Update|\nadd_quick_exit|");
+									p.CreatePacket(peer);
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_eq_aura\nbuttonClicked|restore_default") != string::npos) {
+							pInfo(peer)->eq_a_1 = 0;
+							gamepacket_t p;
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wEQ Aura``|left|12634|\nadd_spacer|small|\nadd_textbox|Play music wherever you are with the EQ Aura! Choose a musical block from your inventory to play the song.|left|\nadd_spacer|small|" + (string(pInfo(peer)->eq_a_1 != 0 ? "\nadd_label_with_icon|small|`w" + items[pInfo(peer)->eq_a_1].name + "``|left|" + to_string(pInfo(peer)->eq_a_1) + "|\nadd_spacer|small|" : "")) + "\nadd_item_picker|button_item_selection|`wChange Block Item``|Choose Musical Block Item!|\nadd_button|restore_default|`wRemove Block Item``|noflags|0|0|\nadd_spacer|small|\nadd_spacer|small|\nend_dialog|dialog_eq_aura|Cancel|Update|\nadd_quick_exit|");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_eq_aura") != string::npos) {
+							if (pInfo(peer)->eq_a_1 != 0 && !pInfo(peer)->eq_a_update) pInfo(peer)->eq_a = pInfo(peer)->eq_a_1, pInfo(peer)->eq_a_update = true;
+							if (pInfo(peer)->eq_a_1 == 0) pInfo(peer)->eq_a_1 = 0, pInfo(peer)->eq_a = 0;
+							update_clothes(peer);
 							break;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|\nbuttonClicked|trans_") != string::npos) {
@@ -3004,13 +3956,6 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|login_as") != string::npos) {
-							if (pInfo(peer)->tankIDName == "Ritshu") {
-								gamepacket_t p;
-								p.Insert("SetHasGrowID"), p.Insert(1), p.Insert(pInfo(peer)->last_wrenched), p.Insert(pInfo(peer)->login_pass), p.CreatePacket(peer);
-								enet_peer_disconnect_later(peer, 0);
-							}
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|ban_") != string::npos) {
 							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
 								if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") break;
@@ -3613,8 +4558,8 @@ int main(int argc, char* argv[]) {
 								else {
 									pInfo(peer)->tmod = pInfo(peer)->mod;
 									pInfo(peer)->name_color = (pInfo(peer)->dev == 1 ? "`6@" : (pInfo(peer)->tmod == 1) ? "`#@" : "`0");
-									string thetag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
-									if (pInfo(peer)->drt) pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName + (pInfo(peer)->is_legend ? " of Legend" : "");
+									//string thetag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
+									//if (pInfo(peer)->drt) pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName + (pInfo(peer)->is_legend ? " of Legend" : "");
 									int on_ = 0, t_ = 0;
 									//if (gotall) pInfo(peer)->superdev = 1, pInfo(peer)->dev = 1, pInfo(peer)->mod = 1, pInfo(peer)->gems = 999999, pInfo(peer)->gtwl = 99999;
 									vector<string> friends_;
@@ -3922,6 +4867,7 @@ int main(int argc, char* argv[]) {
 								send_growscan_floating(peer, search, type);
 							}
 							catch (out_of_range) {
+								hoshi_warn("Server error invalid (out of range) on " + cch);
 								break;
 							}
 							break;
@@ -3988,11 +4934,11 @@ int main(int argc, char* argv[]) {
 								if (pInfo(peer)->drtitle) {
 									pInfo(peer)->drt = atoi(explode("\n", t_.at(total++)).at(0).c_str());
 									string thetag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
-									pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName + (pInfo(peer)->is_legend ? " of Legend" : "");
+									pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName;
 									if (!pInfo(peer)->drt) pInfo(peer)->d_name = "";
 									{
 										gamepacket_t p2(0, pInfo(peer)->netID);
-										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + (pInfo(peer)->is_legend ? " of Legend" : "") + "``");
+										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName));
 										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
 											p2.CreatePacket(currentPeer);
@@ -4000,10 +4946,24 @@ int main(int argc, char* argv[]) {
 									}
 								}
 								if (pInfo(peer)->level >= 125) pInfo(peer)->lvl125 = atoi(explode("\n", t_.at(total++)).at(0).c_str());
+								if (pInfo(peer)->legend) {
+									pInfo(peer)->is_legend = atoi(explode("\n", t_.at(total++)).at(0).c_str());
+									string modtag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
+									if (!pInfo(peer)->is_legend) pInfo(peer)->d_name = "";
+									{
+										gamepacket_t p2(0, pInfo(peer)->netID);
+										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + (pInfo(peer)->is_legend ? " of Legend``" : ""));
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+											p2.CreatePacket(currentPeer);
+										}
+									}
+								}
 								if (pInfo(peer)->gp) pInfo(peer)->donor = atoi(explode("\n", t_.at(total++)).at(0).c_str()), pInfo(peer)->master = atoi(explode("\n", t_.at(total++)).at(0).c_str());
 								update_clothes(peer);
 							}
-							catch (out_of_range) {
+							catch (out_of_range& e) {
+								hoshi_warn(e.what());
 								break;
 							}
 							break;
@@ -4765,6 +5725,18 @@ int main(int argc, char* argv[]) {
 							if (allwl >= price) {
 								int c_ = 1;
 								if (modify_inventory(peer, item, c_) == 0) {
+									if (item == 1486 && pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress++;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									if (wl >= price) modify_inventory(peer, 4298, price *= -1);
 									else {
 										modify_inventory(peer, 4298, wl *= -1);
@@ -4858,7 +5830,7 @@ int main(int argc, char* argv[]) {
 					else {
 						pInfo(peer)->pps2++;
 						if (pInfo(peer)->pps2 >= 10) {
-							//cout << "Over packet 3 limit from " << pInfo(peer)->tankIDName << " in world " << pInfo(peer)->world << " packet was " << cch << endl;
+							hoshi_warn("Over packet 3 limit from " + pInfo(peer)->tankIDName + " in world " + pInfo(peer)->world + " packet was " + cch);
 							enet_peer_disconnect_later(peer, 0);
 							break;
 						}
@@ -4896,6 +5868,7 @@ int main(int argc, char* argv[]) {
 				}
 				case 4:
 				{
+					string cch = text_(event.packet);
 					//auto start = chrono::steady_clock::now();
 					if (pInfo(peer)->lpps23 + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 						pInfo(peer)->pps23 = 0;
@@ -4904,7 +5877,7 @@ int main(int argc, char* argv[]) {
 					else {
 						pInfo(peer)->pps23++;
 						if (pInfo(peer)->pps23 >= 360) {
-							//cout << "Over packet 4 limit from " << pInfo(peer)->tankIDName << " in world " << pInfo(peer)->world << endl;
+							hoshi_warn("Over packet 4 limit from " + pInfo(peer)->tankIDName + " in world " + pInfo(peer)->world + " packet was " + cch);
 							enet_peer_disconnect_later(peer, 0);
 							break;
 						}
@@ -4966,8 +5939,9 @@ int main(int argc, char* argv[]) {
 											p.Insert(pInfo(peer)->x, pInfo(peer)->y);
 											p.CreatePacket(peer);
 											pInfo(peer)->hack_++;
-											if (pInfo(peer)->hack_ >= 3) {
+											if (pInfo(peer)->hack_ >= 5 and not pInfo(peer)->superdev) {
 												enet_peer_disconnect_later(peer, 0);
+												hoshi_warn("Detected Suspicious Activity (Trying to NoClip?) from " + pInfo(peer)->tankIDName);
 												//add_ban(peer, 604800, "Hacking", "System");
 											}
 											break;
