@@ -151,11 +151,11 @@ struct Player {
 	int flagmay = 256;
 	int lockeitem = 0;
 	bool ghost = false, invis = false;
-	int n = 0; //newbie passed save
+	int n = 0; //new player passed save
 	string note = "";
 	int totaltopup = 0;
 	int supp = 0, hs = 0;
-	int mod = 0, smod = 0, dev = 0, m_h = 0;
+	int mod = 0, dev = 0, m_h = 0;
 	int wls = 0;
 	int csn = -1;
 	long long int s_t = 0;
@@ -173,6 +173,7 @@ struct Player {
 	vector<string> pending_friends{};
 	vector<string> bans{}, logs{};
 	string last_edit = "";
+	string growmoji = "(wl)|ā|0&(oops)|ą|0&(sleep)|Ċ|0&(punch)|ċ|0&(bheart)|Ĕ|0&(grow)|Ė|0&(gems)|ė|0&(gtoken)|ę|0&(cry)|ĝ|0&(vend)|Ğ|0&(bunny)|ě|0&(cactus)|ğ|0&(pine)|Ĥ|0&(peace)|ģ|0&(terror)|ġ|0&(troll)|Ġ|0&(evil)|Ģ|0&(fireworks)|Ħ|0&(football)|ĥ|0&(alien)|ħ|0&(party)|Ĩ|0&(pizza)|ĩ|0&(clap)|Ī|0&(song)|ī|0&(ghost)|Ĭ|0&(nuke)|ĭ|0&(halo)|Į|0&(turkey)|į|0&(gift)|İ|0&(cake)|ı|0&(heartarrow)|Ĳ|0&(lucky)|ĳ|0&(shamrock)|Ĵ|0&(grin)|ĵ|0&(ill)|Ķ|0&(eyes)|ķ|0&(weary)|ĸ|0&(moyai)|ļ|0&(plead)|Ľ|0&";
 
 	int i_11818_1 = 0, i_11818_2 = 0;
 	int8_t random_fossil = rand() % 3 + 4;

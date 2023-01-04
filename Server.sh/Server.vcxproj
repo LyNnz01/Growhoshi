@@ -88,8 +88,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include\libdpp\include\dpp-10.0;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include\libdpp\lib\dpp-10.0;$(LibraryPath)</LibraryPath>
+    <IncludePath>F:\Server.sh\include\libdpp\include\dpp-10.0;C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include\libdpp\include\dpp-10.0;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include\libdpp\lib\dpp-10.0;F:\Server.sh\include\libdpp\lib\dpp-10.0;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -150,7 +150,7 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/Zc:char8_t /utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Administrator\Desktop\Growhoshi\Server.sh\include;F:\Server.sh\include;$(SolutionDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

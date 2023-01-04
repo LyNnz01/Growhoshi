@@ -31,7 +31,7 @@ struct Guild
 	string guild_world = "";
 	vector<GuildLog> guild_logs{};
 };
-vector<vector<int>> guild_lvl {
+vector<vector<int>> guild_lvl{
 	{405000, 100000}, // 1 >> 2
 	{1215000, 125000}, // 2 >> 3
 	{2430000, 150000}, // 3 >> 4
@@ -258,7 +258,6 @@ void leave_guild(ENetPeer* peer) {
 				create_guild_log(guild_information, "`$" + pInfo(peer)->tankIDName + "`` `wleft the guild", 5948);
 			}
 		}
-		
 	}
 }
 string get_guild_statement_edit(const ENetPeer* peer, string s_ = "") {
@@ -301,13 +300,13 @@ void send_guild_member_info(ENetPeer* peer, string member_name) {
 			if (member_search->member_name == member_name) {
 				if (member_search->display_name == "") {
 					member_search->display_name = "`o" + member_search->member_name;
-						ifstream ifs("database/players/" + member_search->member_name + "_.json");
-						if (ifs.is_open()) {
-							json j;
-							ifs >> j;
-							if (j["mod"] == 1) member_search->display_name = "`#@" + member_search->member_name;
-							if (j["dev"] == 1) member_search->display_name = "`6@" + member_search->member_name;
-						}
+					ifstream ifs("database/players/" + member_search->member_name + "_.json");
+					if (ifs.is_open()) {
+						json j;
+						ifs >> j;
+						if (j["mod"] == 1) member_search->display_name = "`#@" + member_search->member_name;
+						if (j["dev"] == 1) member_search->display_name = "`6@" + member_search->member_name;
+					}
 				}
 				string guild_foreground = (guild_information->guild_mascot[0] == 0 ? "5814" : to_string(guild_information->guild_mascot[0]));
 				string guild_background = (guild_information->guild_mascot[1] == 0 ? "0" : to_string(guild_information->guild_mascot[1]));
@@ -356,7 +355,7 @@ string get_guild_info(const ENetPeer* peer, bool all_ = false) {
 		if (guild_id == 0) {
 			return "set_default_color|`o\nadd_label_with_icon|big|`wGrow Guild ``|left|5814|\nadd_textbox|Welcome to Grow Guilds where you can create a Guild! With a Guild you can compete in Guild Leaderboards to earn rewards and level up the Guild to add more members.|left|\nadd_spacer|small|\nadd_textbox|To create a Guild you must either be a  `2Supporter`` or `2Super Supporter``.|left|\nadd_textbox|The cost for `2Super Supporters`` is: `6" + comma(guild_create_gem_requirement / 2) + "`` Gems.|left|\nadd_spacer|small|\nadd_textbox|You will be charged: `6" + comma((pInfo(peer)->supp == 1 ? guild_create_gem_requirement / 2 : guild_create_gem_requirement)) + "`` Gems.|left|\nadd_spacer|small|\nadd_textbox|`8Caution``: A guild can only be created in a world owned by you and locked with a `5World Lock``!|left|\nadd_spacer|small|\nadd_button|showcreateguild|Create a Guild|noflags|0|0|\nadd_button|back|Back|noflags|0|0|\nend_dialog|requestcreateguildpage|Close||";
 		}
-		/*else if (guild_id == 0 && !(find(Herman.begin(), Herman.end(), pInfo(peer)->tankIDName) != Herman.end())) {
+		/*else if (guild_id == 0 && !(find(Hoshi.begin(), Hoshi.end(), pInfo(peer)->tankIDName) != Hoshi.end())) {
 			gamepacket_t p;
 			p.Insert("OnTalkBubble");
 			p.Insert(pInfo(peer)->netID);
@@ -416,11 +415,11 @@ string get_guild_info(const ENetPeer* peer, bool all_ = false) {
 					if (search_member->role_id == 0) online_guild_members.push_back("\nadd_button|" + search_member->member_name + "|`4OFFLINE:(" + (friend_last_online_ < 60 ? to_string(friend_last_online_) + "s" : (friend_last_online_ < 3600 ? to_string(friend_last_online_ / 60) + "m" : (friend_last_online_ < 86400 ? to_string(friend_last_online_ / 3600) + "h" : to_string(friend_last_online_ / 86400) + "d"))) + ") " + search_member->display_name + "``" + (search_member->role_id != 0 ? (search_member->role_id == 1 ? " `9(GE)``" : (search_member->role_id == 2 ? " `6(GC)``" : (search_member->role_id == 3 ? " `e(GL)``" : ""))) : "") + "``|0|0|");
 				}
 			}
-			return "set_default_color|`o\n"+ (guild_information->guild_mascot[0] != 0 || guild_information->guild_mascot[1] != 0 ? "add_dual_layer_icon_label|big|`wGrow Guild Mascot Editor ``|left|" + to_string(guild_information->guild_mascot[0]) + "|" + to_string(guild_information->guild_mascot[1]) + "|1.0|0|" : "add_label_with_icon|big|`wGrow Guild Mascot Editor ``|left|5814|") + "\nadd_spacer|small|\nadd_textbox|`o" + guild_information->guild_name + "``|left|\nadd_textbox|`o" + guild_information->guild_description + "``|left|\nadd_textbox|`oGuild size: " + to_string(guild_information->guild_members.size()) + "/" + to_string(guild_information->guild_level * 5) + " members``|left|\nadd_spacer|small|\nadd_button|guild_logs|`wGuild Logs``|noflags|0|0|\nadd_spacer|small|" + (all_ ? "" : "\nadd_button|guild_members_all|`wShow offline too``|noflags|0|0|") + "\nadd_button|warphome|`wGo to Guild Home``|noflags|0|0|\nadd_button|guild_members_options|`wGuild Member Options``|noflags|0|0|" + (my_role >= 2 ? "\nadd_button|changestatement|`wEdit Guild Statement``|noflags|0|0|" : "") + (my_role != 3 ? "\nadd_button|leave_guild|`4Leave Guild``|noflags|0|0|" : "") + "\nadd_spacer|small|\nadd_spacer|small|\nadd_textbox|`5" + to_string(online_guild_members.size() + leader.size() + co.size() + elder.size()) + " of " + to_string(guild_information->guild_members.size()) + "`` `wGuild Members Online``|left|" + (ok.size() == 1 ? "\nadd_textbox|`oNone of your guild friends are currently online.``|left|\nadd_spacer|small|" : "") + join(leader, "") + join(co, "") + join(elder, "") + join(online_guild_members, "") + "\nadd_spacer|small|\nadd_button|back|`wBack``|noflags|0|0|\nadd_button||`wClose``|noflags|0|0|\nend_dialog|guildmembers|||\nadd_quick_exit|";
+			return "set_default_color|`o\n" + (guild_information->guild_mascot[0] != 0 || guild_information->guild_mascot[1] != 0 ? "add_dual_layer_icon_label|big|`wGrow Guild Mascot Editor ``|left|" + to_string(guild_information->guild_mascot[0]) + "|" + to_string(guild_information->guild_mascot[1]) + "|1.0|0|" : "add_label_with_icon|big|`wGrow Guild Mascot Editor ``|left|5814|") + "\nadd_spacer|small|\nadd_textbox|`o" + guild_information->guild_name + "``|left|\nadd_textbox|`o" + guild_information->guild_description + "``|left|\nadd_textbox|`oGuild size: " + to_string(guild_information->guild_members.size()) + "/" + to_string(guild_information->guild_level * 5) + " members``|left|\nadd_spacer|small|\nadd_button|guild_logs|`wGuild Logs``|noflags|0|0|\nadd_spacer|small|" + (all_ ? "" : "\nadd_button|guild_members_all|`wShow offline too``|noflags|0|0|") + "\nadd_button|warphome|`wGo to Guild Home``|noflags|0|0|\nadd_button|guild_members_options|`wGuild Member Options``|noflags|0|0|" + (my_role >= 2 ? "\nadd_button|changestatement|`wEdit Guild Statement``|noflags|0|0|" : "") + (my_role != 3 ? "\nadd_button|leave_guild|`4Leave Guild``|noflags|0|0|" : "") + "\nadd_spacer|small|\nadd_spacer|small|\nadd_textbox|`5" + to_string(online_guild_members.size() + leader.size() + co.size() + elder.size()) + " of " + to_string(guild_information->guild_members.size()) + "`` `wGuild Members Online``|left|" + (ok.size() == 1 ? "\nadd_textbox|`oNone of your guild friends are currently online.``|left|\nadd_spacer|small|" : "") + join(leader, "") + join(co, "") + join(elder, "") + join(online_guild_members, "") + "\nadd_spacer|small|\nadd_button|back|`wBack``|noflags|0|0|\nadd_button||`wClose``|noflags|0|0|\nend_dialog|guildmembers|||\nadd_quick_exit|";
 		}
 		return "set_default_color|`o\nadd_label_with_icon|big|`wGrow Guild ``|left|5814|\nadd_textbox|Something went wrong!|left|\nend_dialog|guildalreadyjoined|Close||";
 	}
-	catch (...){
+	catch (...) {
 		return "set_default_color|`o\nadd_label_with_icon|big|`wGrow Guild ``|left|5814|\nadd_textbox|There's Something error while you're opening this page!|left|\nend_dialog|guilderror|Close||";
 	}
 }

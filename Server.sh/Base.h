@@ -1,9 +1,11 @@
 ﻿#pragma once
+long long ates = 0;
 bool Harvest_Festival = false, Halloween = false, Thanksgiving = false, December = true, Winterfest = false;
 using json = nlohmann::json;
 BYTE* item_data;
 int item_hash, item_data_size;
 vector<string> swear_words = {};
+vector<string> Hoshi{ "Ritshu", "Thadawe" };
 ENetHost* server;
 string shop_list = "", opc_list = "", shop_list2 = "", shop_list2_2 = "", zombie_list = "", surgery_list = "", rare_text = "", rare2_text = "", rainbow_text = "";
 vector<pair<int, int>> lockeitem, untradeitem, opc_item, zombieitem, surgeryitem;
@@ -1075,6 +1077,7 @@ int get_punch_id(const int id_) {
 		return 200;
 	case 10890: return 202;
 	case 10922: case 9550: return 203;
+	case 10914: return 204;
 	case 10990: return 205;
 	case 10998: return 206;
 	case 10952: return 207;
@@ -1156,6 +1159,8 @@ int get_punch_id(const int id_) {
 	case 12860:
 	case 12862:
 	case 12870:
+	case 12880:
+	case 12886:
 		return 237;
 	case 11814:
 	case 12232:
@@ -1327,6 +1332,9 @@ int items_dat() {
 		else if (def.actionType == 55) {
 			def.trans = 1;
 		}
+		else if (def.actionType == 92) {
+			def.dnaproc = 1;
+		}
 		else if (def.actionType == 93) {
 			def.trickster = 1;
 		}
@@ -1482,8 +1490,8 @@ int items_dat() {
 		if (itemsdatVersion >= 14) memPos += 4;
 		if (i != def.id) return -1;
 		string category = getItemCategory(def.actionType, def.name);
-		if (def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 92 || def.actionType == 91 || def.actionType == 89 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
-		if (def.id == 10258) def.blocked_place = true;
+		if (def.actionType == 115 || def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 91 || def.actionType == 89 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
+		if (def.id == 10962 || def.id == 10964 || def.id == 10966 || def.id == 10968 || def.id == 10970 || def.id == 10972 || def.id == 10974 || def.id == 10976 || def.id == 10978 || def.id == 10980 || def.id == 10982 || def.id == 10984 || def.id == 10986) def.blocked_place = true;
 		if (def.id == 3832 || def.id == 6016 || def.id == 1436 || def.id == 8246 || def.id == 10258 || def.id == 2646) def.blocked_place = false;
 		string clothingType_ = "";
 		if (def.actionType == 107) {
@@ -1532,14 +1540,14 @@ int items_dat() {
 			}if (prop == "Untradable") {
 				def.properties += Property_Untradable;
 				def.untradeable = 1;
-				if (def.id == 5816) def.untradeable = 1;
-				//else if (def.id == 11478) def.untradeable = 0;
+				if (def.id == 12880) def.untradeable = 1;
 			} if (prop == "Wrenchable") {
 				def.properties += Property_Wrenchable;
 			} if (prop == "MultiFacing") {
 				def.properties += Property_MultiFacing;
 			} if (prop == "Permanent") {
 				def.properties += Property_Permanent;
+				if (def.id == 5816) def.untradeable = 1;
 			} if (prop == "AutoPickup") {
 				def.properties += Property_AutoPickup;
 			} if (prop == "WorldLock") {
@@ -1947,7 +1955,7 @@ int items_dat() {
 		}
 		if (i == 1680) {//sfw
 			items[i].noob_item = { {12176, 1}, { 8616,1},{ 8618,1},{ 1676,1},{ 8590,1},{ 9732,1},{ 2868,1},{ 4822,1},{ 1668,1},{ 11046,1},{ 1678,1},{ 1664,1},{ 844,1},{ 2864,1},{ 3764,1},{ 6308,1},{ 6310,1},{ 6306,1},{ 6322,1},{ 1670,1},{ 4816,1},{ 4818,1},{ 2870,1},{ 2872,1},{ 2874,1},{ 2802,1},{ 1666,1},{ 4814,1 } };
-			items[i].rare_item = { {12352, 1} , { 8588,1},{ 9730,1},{ 11008,1 },{12186,1}, {12180, 1}, {12176, 1} };
+			items[i].rare_item = { {2854, 1} , { 4820,1},{ 1674,1},{ 3696,1 },{6312,1}, {8588, 1}, {11008, 1}, { 12186, 1 } };
 			items[i].newdropchance = 4000;
 		}
 		if (i == 11036) {
@@ -2236,23 +2244,6 @@ int items_dat() {
 		if (i == 7782) items[i].gtwl = 2000;
 		if (items[i].gtwl != 0) lockeitem.push_back(make_pair(items[i].gtwl, i));
 
-		// untradealbe shop
-		if (i == 6866 || i == 6896 || i == 6898 || i == 6900 || i == 6902 || i == 6904 || i == 7020) items[i].u_gtwl = 500;
-		if (i == 3174 || i == 1932 || i == 6868 || i == 10500 || i == 11240 || i == 10720) items[i].u_gtwl = 1000;
-		if (i == 1996 || i == 11094 || i == 6846 || i == 6870 || i == 6028 || i == 8962) items[i].u_gtwl = 1500;
-		if (i == 10684) items[i].u_gtwl = 2000;
-		if (i == 6872 || i == 10694 || i == 8620 || i == 10714 || i == 10890 || i == 11536) items[i].u_gtwl = 2500;
-		if (i == 1986 || i == 1874 || i == 1876 || i == 7976 || i == 9470 || i == 8030 || i == 11120) items[i].u_gtwl = 3000;
-		if (i == 1904 || i == 8308) items[i].u_gtwl = 4000;
-		if (i == 7670) items[i].u_gtwl = 4500;
-		if (i == 6874 || i == 8032) items[i].u_gtwl = 5000;
-		if (i == 6876) items[i].u_gtwl = 7500;
-		if (i == 6878 || i == 8306 || i == 9410) items[i].u_gtwl = 10000;
-		if (i == 9006) items[i].u_gtwl = 12500;
-		if (i == 7586) items[i].u_gtwl = 15000;
-		if (i == 6026 || i == 11140 || i == 11142)items[i].u_gtwl = 30000;
-		if (items[i].u_gtwl != 0) untradeitem.push_back(make_pair(items[i].u_gtwl, i));
-
 		//online star hub list
 		if (i == 9380 || i == 7784 || i == 1474 || i == 4604 || i == 4596 || i == 5114)  items[i].oprc = 1;
 		if (i == 5116 || i == 928 || i == 3724 || i == 4582 || i == 4322 || i == 528) items[i].oprc = 2;
@@ -2488,20 +2479,18 @@ int items_dat() {
 		if (items[i].blockType == BlockTypes::PLATFORM) items[i].collisionType = 0;
 		if (i == 11560 || i == 11554 || i == 11556 || i == 11558 || i == 10956 || i == 10958 || i == 10954 || i == 10952 || i == 10960) items[i].flagmay = 1929312;
 		if (i == 12014 || i == 12016 || i == 12018 || i == 12020) items[i].flagmay = 2097168;
+		if (i == 12646 || i == 12648 || i == 12650) items[i].flagmay = 8388864;
 		if (i == 10426) items[i].flagmay = 1929156;
 		if (i == 10412) items[i].flagmay = 1929;
-		if (items[i].clothingType == 6 and i % 2 == 0 and i != 9532) {
+		if (items[i].clothingType == 6 and i % 2 == 0 and i != 8430 and i != 9532) {
 			rare_text += "\nadd_label_with_icon|small| " + items[i].name + "|left|" + to_string(i) + "|";
 			items[9386].randomitem.push_back(i);
 		}
-		if (items[i].clothingType == 5 and i % 2 == 0) {
-			rare2_text += "\nadd_label_with_icon|small| " + items[i].name + "|left|" + to_string(i) + "|";
-			items[9384].randomitem.push_back(i);
-		}
+		if (items[i].clothingType == 5 and i % 2 == 0) items[9384].randomitem.push_back(i);
 		if (items[i].r_1 != 0 or items[i].r_2 != 0 and items[i].rarity > 1 and i != 1790) items[9380].randomitem.push_back(i);
 		if (items[i].blockType == BlockTypes::LOCK and i != 5814 and i != 9640) {
 			rainbow_text += "\nadd_label_with_icon|small| " + items[i].name + "|left|" + to_string(i) + "|";
-			items[7782].randomitem.push_back(i);
+			items[120].randomitem.push_back(i);
 		}
 		items[i].newdropchance = 36 - items[i].rarity / 8;
 		if (items[i].newdropchance <= 26)  items[i].newdropchance = 26;

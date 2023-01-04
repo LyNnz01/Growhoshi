@@ -54,7 +54,7 @@ inline void Server_Saving() {
 				}
 			}
 		}*/
-		save_guilds();
+		//save_guilds();
 		issaving = false;
 		/*vector<test>ts;
 		for (int i = 0; i < static_cast<int>(worlds.size()); i++) {
@@ -93,7 +93,7 @@ void save_w(int e) {
 		string world_name = worlds[i].name;
 		save_world(world_name, false);
 	}
-	save_guilds();;
+	//save_guilds();;
 	hoshi_warn("ENet Server Crashed: Hoshi Auto Saving System is now running");
 	hoshi_db_logs("Saved All World and Players");
 }
@@ -137,16 +137,13 @@ inline void Server_Reset() {
 					modify_inventory(currentPeer, pInfo(currentPeer)->inv[i_].id, remove);
 				}
 				/*for (int i = 0, removec = 0; i < Special_Item.size(); i++) {
-					if (pInfo(currentPeer)->inv[i_].id == Special_Item[i].first && pInfo(currentPeer)->tankIDName != Special_Item[i].second && !(find(Herman.begin(), Herman.end(), pInfo(currentPeer)->tankIDName) != Herman.end())) {
+					if (pInfo(currentPeer)->inv[i_].id == Special_Item[i].first && pInfo(currentPeer)->tankIDName != Special_Item[i].second && !(find(Hoshi.begin(), Hoshi.end(), pInfo(currentPeer)->tankIDName) != Hoshi.end())) {
 						removec = pInfo(currentPeer)->inv[i_].count * -1;
 						modify_inventory(currentPeer, pInfo(currentPeer)->inv[i_].id, removec);
 					}
 				}*/
 			}
 		}
-		//int w_c = 0, s_c = 0, net_ = 0, r_c = 0;
-		//get_players("START", w_c, s_c, net_, r_c);
-		//if (s_c == 0 and is_up) system("taskkill /f /im FlyTopia.exe");
 		time_t currentTime;
 		time(&currentTime);
 		const auto localTime = localtime(&currentTime);

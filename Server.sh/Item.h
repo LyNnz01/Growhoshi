@@ -137,6 +137,7 @@ struct ItemDB
 	bool timer = 0;
 	bool dshelf = 0;
 	bool trans = 0;
+	bool dnaproc = 0;
 	bool xeno = 0;
 	bool bulletin_board = 0;
 	bool magic_egg = 0;
