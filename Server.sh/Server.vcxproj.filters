@@ -13,93 +13,129 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\enet">
+      <UniqueIdentifier>{eb9d10a2-556a-499a-8f0f-e48ff80f999e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Base">
+      <UniqueIdentifier>{f6d74450-fe33-4493-a8e9-20d71f9af13f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Packet">
+      <UniqueIdentifier>{aff3a625-5a49-4f53-8652-9f66be90dc00}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Utils">
+      <UniqueIdentifier>{4785dd16-eed7-4822-abd2-fe6ec0420807}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Feature">
+      <UniqueIdentifier>{a0d2f7be-d2c6-45f0-a116-ee11f091b836}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files\proton">
+      <UniqueIdentifier>{e5f1c2b7-0379-4d2f-bd01-10626187a674}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="enet\callbacks.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\compress.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\host.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\list.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\packet.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\peer.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\protocol.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\unix.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
     <ClCompile Include="enet\win32.c">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\enet</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="enet\include\callbacks.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\enet.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\list.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\protocol.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\time.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\types.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\unix.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\utility.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="enet\include\win32.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="enet\dirent.h">
+      <Filter>Source Files\enet</Filter>
     </ClInclude>
     <ClInclude Include="Base.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Base</Filter>
     </ClInclude>
     <ClInclude Include="Item.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Base</Filter>
     </ClInclude>
     <ClInclude Include="Player.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Base</Filter>
     </ClInclude>
     <ClInclude Include="World.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Packet.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Webhook.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SaveSystem.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Base</Filter>
     </ClInclude>
     <ClInclude Include="Guilds.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\Feature</Filter>
+    </ClInclude>
+    <ClInclude Include="Packet.h">
+      <Filter>Header Files\Packet</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\callbacks.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\enet.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\list.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\protocol.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="SaveSystem.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\time.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\types.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\unix.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\utility.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="enet\include\win32.h">
+      <Filter>Header Files\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="GameUpdatePacket.h">
+      <Filter>Header Files\Packet</Filter>
+    </ClInclude>
+    <ClInclude Include="Winterfest.h">
+      <Filter>Header Files\Feature</Filter>
+    </ClInclude>
+    <ClInclude Include="Dialog.h">
+      <Filter>Header Files\Base</Filter>
+    </ClInclude>
+    <ClInclude Include="proton\Variant.hpp">
+      <Filter>Resource Files\proton</Filter>
+    </ClInclude>
+    <ClInclude Include="proton\Vector.hpp">
+      <Filter>Resource Files\proton</Filter>
+    </ClInclude>
+    <ClInclude Include="Algorithm.h">
+      <Filter>Header Files\Utils</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

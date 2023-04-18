@@ -88,7 +88,7 @@ struct ItemDB
 	int grindable_prize = 0;
 	string event_name = "";
 	int event_total = 0;
-	;	int oprc = 0;
+	int oprc = 0;
 	int flagmay = 256;
 	int zombieprice = 0;
 	int surgeryprice = 0;
@@ -118,6 +118,7 @@ struct ItemDB
 	int seedOverlayColor = 0;
 	int extraFileHash = 0;
 	int audioVolume = 0;
+	bool mooncake = false;
 	int effect = 0;
 	int id = 0;
 	bool untradeable = 0;
@@ -148,6 +149,7 @@ struct ItemDB
 	bool heart_monitor = 0;
 	bool mannequin = 0;
 	bool charger = 0;
+	bool fossil_prep = 0;
 	bool well_of_love = 0;
 	bool portrait = 0;
 	bool easel = 0;
@@ -175,7 +177,7 @@ struct ItemDB
 	char textureY = 0;
 	char spreadType = 0;
 	char isStripeyWallpaper = 0;
-	int collisionType = 0; // buvo char collisionType = 0;
+	int collisionType = 0;
 	char clothingType = 0;
 	short val2;
 	short isRayman = 0;
@@ -200,5 +202,4 @@ struct ItemDB
 	BlockTypes blockType{};
 	string ori_name = "";
 };
-
 vector<ItemDB> items;

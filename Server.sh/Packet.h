@@ -99,6 +99,9 @@ public:
 		ENetPacket* packet = enet_packet_create(packet_data, len, 1);
 		enet_peer_send(peer, 0, packet);
 	}
+	ENetPacket* get_packet() {
+		return enet_packet_create(packet_data, len, 1);
+	}
 };
 
 PlayerMoving* unpackPlayerMoving(BYTE* data) {
@@ -132,3 +135,42 @@ BYTE* get_struct(ENetPacket* packet) {
 	}
 	return result;
 }
+/*
+void Server::handlePacket(Player* player, GamePacket* packet)
+{
+	if (packet->type != PacketType::STATE)
+		logFileP("[handlePacket] ({} | {}):\n-----\n{}-----", player->getUsername(), player->ipAddress, packet->debugStr());
+
+	// Avoid ban while connecting a lot of gems
+	if (packet->type != PacketType::ITEM_ACTIVATE_OBJECT_REQUEST)
+		player->getAC().packetsSent++;
+
+	switch (packet->type)
+	{
+	case PacketType::STATE:
+		player->handleState(packet);
+		break;
+	case PacketType::TILE_CHANGE_REQUEST:
+		player->handleTileChange(packet);
+		break;
+	case PacketType::TILE_ACTIVATE_REQUEST:
+		player->handleTileActivate(packet);
+		break;
+	case PacketType::ITEM_ACTIVATE_REQUEST:
+		player->handleItemActivate(packet);
+		break;
+	case PacketType::PING_REPLY:
+		player->handlePingReply(packet);
+		break;
+	case PacketType::APP_INTEGRITY_FAIL:
+		player->handleIntegrityFail(packet);
+		break;
+	case PacketType::ITEM_ACTIVATE_OBJECT_REQUEST:
+		player->objectActivate(packet);
+		break;
+	case PacketType::SET_ICON_STATE:
+		player->handleIconState(packet);
+		break;
+	}
+}
+*/

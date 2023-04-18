@@ -1,6 +1,10 @@
 ﻿#pragma once
+#include <filesystem>
+#include <regex>
+
 struct Items {
 	uint16_t id = 0, count = 0;
+	bool transmuted;
 };
 struct Friends {
 	string name = "";
@@ -14,11 +18,17 @@ struct PlayMods {
 };
 
 struct Player {
+	map<string, int64_t> cdCommands;
+	struct { int lastActionSent = 0, totalActionSent = 0; } packetSent;
+	int flagged = 0, totalFlag = 0;
+	long long int lastFlagged = 0, lastRespawn = 0, lastDatabaseSave = 0;
+	bool isFlagged = false;
 	// Clashparkour
-	int Time_Remaining = 0, Time_Remaining_1 = 0;
+	long long Time_Remaining = 0, Time_Remaining_1 = 0;
 	bool At_Clashparkour = false, Reach_Tier = false;
 	// Wolf
 	bool wolf_world = false, end_wolf = false;
+	long long Wolf_Time = 0;
 	// DNA Proccesor
 	int DNAInput = 0;
 	int IDDNA1 = 0;
@@ -31,13 +41,13 @@ struct Player {
 	bool MKW = false, MKP = false; // Minokawa Save
 	// Warning System
 	int Warning = 0;
-	vector<string> Warning_Message{};
+	vector<string> Warning_Message{}, Account_Notes{}, Alt_Accounts{};
 	vector<string> WM{};
 	// Halloween
 	int Darking_Sacrifice = 0, Task_Darking = 0, Task_Dark_Ticket = 0, Task_Gift_Growganoth = 0, Task_Mountain = 0;
 	int Tomb_X51 = 8000, Tomb_X42_1 = 8000, Tomb_X27 = 8000, Tomb_X71 = 8000, Tomb_X72 = 8000, Tomb_X42_2 = 8000;
-	long long Tomb_Time = 0, Tomb_Finish = 0;
-	bool TombofGrowganoth = false;
+	long long Tomb_Time = 0, Tomb_Finish = 0, Race_Time = 0;
+	bool TombofGrowganoth = false, OnRace = false;
 	//
 	int eq_a = 0, eq_a_1 = 0;
 	bool eq_a_update = false;
@@ -120,15 +130,39 @@ struct Player {
 	long long Cursed_Time = 0;
 	int Offer = 0, Gems = 0, MySpin = 0, Bet_What = 0; // 0 = gems 1 = locks
 
+	// Profile
+	bool Show_Achievements = false, Show_OwnedWorlds = false, Show_AccountCreated = false, Show_HomeWorld = false;
+
+	int staged = 0, p_status = 0, trader = 0;
+	int s4tb = 0;
+	int lvlKit = 0, xpKit = 0;
+	bool startedKit = false, kit1 = false, kit2 = false, kit3 = false, kit4 = false, kit5 = false, kit6 = false, kit7 = false, kit8 = false, kit9 = false, kit10 = false;
+	/*
+	level 5 = mystery boxes x3
+level 10 = supporter (if already unlocked = 100k gems)
+level 15 = rift cape or rift wings
+level 20 = x10 Wooden Booty Chest
+level 30 = random gacha items? SSS/SGBC/GBC/SFW
+level 40 = exclusive skin (if already unlock = 100k gems)
+level 50 = exclusive role titles (if already unlock = 100k gems)
+	*/
+	// Cheat
+	long long int Cheat_AF_Time = 0, Cheat_AF_Since = 0;
+	bool Cheat_HideOther = false, Cheat_HideChat = false, isFacingLeft = false, isRemote = false, Cheat_AF = false, Cheat_AF_isRunning = false, Cheat_AB = false, Cheat_Spam = false, Cheat_AutoCollect = false, Cheat_FastPull = false, Cheat_FastDrop = false, Cheat_FastTrash = false, Cheat_Speed = false, Cheat_Jump = false;
+	int Cheat_AF_Hit = 0, Cheat_AF_PunchX = 0, Cheat_AF_PunchY = 0, Cheat_AF_PlantingTree = 0, Cheat_Spam_Delay = 3, Cheat_Last_Spam = 0;
+	string Cheat_Spam_Text = "`cGrowhoshi `wBest Server", ChoosingName = "";
 	// Lquest
 	int quest_step = 1;
 	int quest_progress = 0;
 	bool quest_active = false;
 	string lastquest = "";
 	string choosing_quest = "";
+	// Cquest
+	bool C_QuestActive = false, CQ = false;
+	int C_QuestStep = 1, C_QuestProgress = 0, C_ProgressNeeded = 0, C_QuestKind = 0, C_DeliverID = 0;
 	//
 	bool While_Respawning = false;
-	string ip = "", lo = ""; //real ip
+	string ip = "", lo = "", last_ip = ""; //real ip
 	long long int last_option = 0;
 	int option_open = 0;
 	vector<string> last_visited_worlds{}, worlds_owned{}, trade_history;
@@ -136,10 +170,10 @@ struct Player {
 	string name_color = "`0";
 	int id = 0, netID = 0, state = 0, trading_with = -1;
 	bool trade_accept = false, accept_the_offer = false;
-	int x = -1, y = -1;
+	int x = -1, y = -1, characterState = 0;
 	int gems = 0;
 	int usedlocke = 0;
-	long long int xp = 0;
+	unsigned long long int xp = 0, last_online = 0;
 	bool usedmegaphone = 0;
 	map<int, int> ac_{};
 	bool hit1 = false;
@@ -154,6 +188,7 @@ struct Player {
 	int n = 0; //new player passed save
 	string note = "";
 	int totaltopup = 0;
+	int totalWls = 0, totalNetWorth = 0;
 	int supp = 0, hs = 0;
 	int mod = 0, dev = 0, m_h = 0;
 	int wls = 0;
@@ -165,7 +200,7 @@ struct Player {
 	string b_r = "", b_b = ""; // ban reason & banned by
 	string m_r = "", m_b = "";
 	int hair = 0, shirt = 0, pants = 0, feet = 0, face = 0, hand = 0, back = 0, mask = 0, necklace = 0, ances = 0; /*clothes*/
-	string tankIDName = "", tankIDPass = "", requestedName = "", world = "", email = "", country = "", home_world = "", last_wrenched = "";
+	string tankIDName = "", tankIDPass = "", modName = "", requestedName = "", world = "", email = "", discordTag = "", discord = "", country = "", home_world = "", last_wrenched = "", roundedPlaytime = "", lastReqName = "";
 	string d_name = "";
 	vector<Items> inv{};
 	vector<Friends> friends{};
@@ -174,7 +209,8 @@ struct Player {
 	vector<string> bans{}, logs{};
 	string last_edit = "";
 	string growmoji = "(wl)|ā|0&(oops)|ą|0&(sleep)|Ċ|0&(punch)|ċ|0&(bheart)|Ĕ|0&(grow)|Ė|0&(gems)|ė|0&(gtoken)|ę|0&(cry)|ĝ|0&(vend)|Ğ|0&(bunny)|ě|0&(cactus)|ğ|0&(pine)|Ĥ|0&(peace)|ģ|0&(terror)|ġ|0&(troll)|Ġ|0&(evil)|Ģ|0&(fireworks)|Ħ|0&(football)|ĥ|0&(alien)|ħ|0&(party)|Ĩ|0&(pizza)|ĩ|0&(clap)|Ī|0&(song)|ī|0&(ghost)|Ĭ|0&(nuke)|ĭ|0&(halo)|Į|0&(turkey)|į|0&(gift)|İ|0&(cake)|ı|0&(heartarrow)|Ĳ|0&(lucky)|ĳ|0&(shamrock)|Ĵ|0&(grin)|ĵ|0&(ill)|Ķ|0&(eyes)|ķ|0&(weary)|ĸ|0&(moyai)|ļ|0&(plead)|Ľ|0&";
-
+	int m_volume = 100;
+	string m_note = "C-F-G#G-F-B#A#G-F-G#G-D#G-C-";
 	int i_11818_1 = 0, i_11818_2 = 0;
 	int8_t random_fossil = rand() % 3 + 4;
 	bool Double_Jump = false, High_Jump = false, Fireproof = false, Punch_Power = false, Punch_Range = false, Speedy = false, Build_Range = false, Speedy_In_Water = false, Punch_Damage = false;
@@ -187,12 +223,14 @@ struct Player {
 	int mds = 0;
 	int offergems = 0;
 	int confirm_reset = 0;
-	bool show_location_ = true, show_friend_notifications_ = true, mlgeff = false;
+	bool show_location_ = true, show_friend_notifications_ = true, isVerifying = false, canEnter = false, account2FA = false, isVerified = false;
 	int level = 1, firesputout = 0, carnivalgameswon = 0;
 	long long playtime = 0;
 	long long int account_created = 0, seconds = 0;
-	string rid = "", mac = "", meta = "", vid = "", platformid = "", wk = "", gameVersion = "";
+	string rid = "", mac = "", meta = "", vid = "", platformid = "", wk = "", gameVersion = "", proto = "", verifiedIP = "", verifiedRID = "", verifiedMAC = "";
+	vector<string> accountLogs{};
 	map<string, int> achievements{};
+	int aAchieved = 0, code2FA = 0, expiredAt = 0;
 	string lastmsg = "", lastmsgworld = "";
 	int gtwl = 0;
 	int c_x = 0, c_y = 0;
@@ -200,7 +238,7 @@ struct Player {
 	int fires = 0;
 	//cooldowns
 	long long int i240 = 0, i756 = 0, i758 = 0;
-	bool tmod = 0;
+	bool tmod = 0, unlockRoleSkin = false, titleDoctor = false, titleFisher = false, titleChef = false, titleStartopia = false;
 	//billboard
 	int b_i = 0, b_a = 0, b_w = 0, b_p = 0;
 	//
@@ -229,11 +267,13 @@ struct Player {
 	int booty_broken = 0;
 	int dd = 0;
 	bool AlreadyDailyQ = false;
+	bool isRespawning = false;
+	bool isStateUpdated = false;
 	vector<PlayMods> playmods{};
 	int b_l = 1;
 	vector<pair<int, int>> bp;
 	int choosenitem = 0;
-	int promo = 0, flagset = 0;
+	int promo = 0, flagset = 0, warn = 0;
 	int radio = 0;
 	int tk = 0;
 	int b_ra = 0, b_lvl = 1;
@@ -253,10 +293,14 @@ struct Player {
 		{8, 0},
 		{9, 0},
 	};
+	vector<string> transmute{};
+	vector<string> temptransmute{};
+	bool updtrans = false;
 	bool block_trade = false;
 	int p_x = 0;
 	int p_y = 0;
 	int guild_id = 0;
+	int uid = 0;
 	uint32_t pending_guild = 0;
 	int is_legend = false;
 	int legend = false;
@@ -265,6 +309,7 @@ struct Player {
 	int pps23 = 0;
 	long long lpps23 = 0;
 	int superdev = 0;
+	int supermod = 0;
 	int exitwarn = 0;
 	int last_exit = 0;
 	int roleIcon = 6;
@@ -357,6 +402,8 @@ struct Player {
 
 	int donate_count = 0;
 	*/
+	int choose_fg = 0;
+	int choose_bg = 0;
 	int last_infected = 0;
 	int pinata_day = 0;
 	bool pinata_prize = false;
@@ -386,7 +433,107 @@ struct FishMoving {
 	int8_t packetType = 31, stopped_fishing;
 	int32_t netID, x, y;
 };
+namespace pData::Algorithm {
+	Friends* get_friend(ENetPeer* peer, string const& name) {
+		if (auto it = std::ranges::find_if(pInfo(peer)->friends, [name](Friends const& fr) { return fr.name == name; }); it != pInfo(peer)->friends.end())
+			return &(*it);
+		return nullptr;
+	}
+	vector<PlayMods>::iterator get_playmod(ENetPeer* peer, int const& id) {
+		return std::ranges::find_if(pInfo(peer)->playmods, [id](PlayMods const& mod) { return mod.id == id; });
+	}
+	vector<Items>::iterator get_inventory_it(ENetPeer* peer, int const& id) {
+		return std::ranges::find_if(pInfo(peer)->inv, [id](Items const& item) { return item.id == id; });
+	}
+	int inventory_empty_slot(ENetPeer* peer, int const& itemId) {
+		int slot = 0;
+		for (Items const& item : pInfo(peer)->inv) {
+			if ((item.id == itemId || item.id == 0) && item.count < 200) slot++;
+		}
+		return slot;
+	}
+	bool inventory_contains(ENetPeer* peer, int const& itemId, int const& quantity) {
+		auto it = get_inventory_it(peer, itemId);
+		if (it == pInfo(peer)->inv.end()) return false;
 
+		if (it->count < quantity) return false;
+
+		return true;
+	}
+	ENetPeer* get_player(string const& name) {
+		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+			if (currentPeer->state != ENET_PEER_STATE_CONNECTED) continue;
+			if (to_lower(pInfo(currentPeer)->tankIDName) == name) return currentPeer;
+		}
+		return nullptr;
+	}
+	optional<json> get_inventory_database(string const& player) {
+		ifstream fstream("players/" + player + "_.json");
+		if (fstream.fail()) return nullopt;
+
+		json j;
+		fstream >> j;
+
+		return j["inv"];
+	}
+	template<typename Func>
+	void loop_players(Func function) {
+		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; currentPeer++) {
+			if (currentPeer->state != ENET_PEER_STATE_CONNECTED) continue;
+			function(currentPeer);
+		}
+	}
+	pair<int, int> count_players(string const& world, bool includeHidden = true) {
+		pair<int, int> total = { 0, 0 };
+		loop_players([world, &total, includeHidden](ENetPeer* currentPeer) {
+			total.second++;
+			if (pInfo(currentPeer)->world == world) {
+				if (pInfo(currentPeer)->invis && !includeHidden) return;
+				total.first++;
+			}
+			});
+		return total;
+	}
+	void modify_inventory_database(string const& player, int const& itemId, int quantity, bool const& set = false) {
+		ifstream fstream("database/players/" + player + "_.json");
+		if (fstream.fail()) return;
+
+		json j;
+		fstream >> j;
+
+		for (size_t i = 0; json & jObject : j["inv"]) {
+			if (jObject["i"].get<int>() == itemId) {
+				int dataQuantity = jObject["c"].get<int>();
+				if (dataQuantity + quantity <= 0) {
+					j["inv"].erase(i);
+					break;
+				}
+
+				jObject["c"] = quantity + (set ? 0 : dataQuantity);
+			}
+			i++;
+		}
+
+		ofstream ostream("database/players/" + player + "_.json");
+		ostream << j;
+	}
+	string get_display_name(ENetPeer* peer) {
+		return pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color + pInfo(peer)->tankIDName : pInfo(peer)->d_name;
+	}
+	template<typename T>
+	T get_json_object(string const& player, string const& object) {
+		ifstream istream("database/players/" + player + "_.json");
+		json j;
+		istream >> j;
+
+		return j[object].get<T>();
+	}
+	optional<Items> get_inventory(ENetPeer* peer, int const& itemId) {
+		if (auto it = std::ranges::find_if(pInfo(peer)->inv, [itemId](Items const& item) { return item.id == itemId; }); it != pInfo(peer)->inv.end())
+			return *it;
+		return nullopt;
+	}
+}
 BYTE* packPlayerMoving(PlayerMoving* dataStruct, int size_ = 56) {
 	BYTE* data = new BYTE[size_];
 	memset(data, 0, size_);
@@ -429,6 +576,64 @@ void send_raw(ENetPeer* peer, int a1, void* packetData, int packetDataSize, int 
 		}
 		enet_peer_send(peer, 0, p);
 	}
+}
+inline string currentTime()
+{
+	auto now = time(nullptr);
+	struct tm tstruct;
+	char buf[80];
+	tstruct = *localtime(&now);
+	strftime(buf, sizeof(buf), "%R", &tstruct);
+	return buf;
+}
+inline string uptimeText(int n) {
+	string x;
+	const auto day = n / (24 * 3600);
+	if (day != 0) {
+		if (to_string(day) == "1") {
+			x.append(to_string(day) + " day");
+		}
+		else {
+			x.append(to_string(day) + " days");
+		}
+	}
+	n = n % (24 * 3600);
+	const auto hour = n / 3600;
+
+	if (hour != 0) if (x.length() > 1) x.append(", ");
+	if (hour != 0) {
+		if (to_string(hour) == "1") {
+			x.append(to_string(hour) + " hour");
+		}
+		else {
+			x.append(to_string(hour) + " hours");
+		}
+	}
+
+	n %= 3600;
+	const auto minutes = n / 60;
+	if (minutes != 0) if (x.length() > 1) x.append(", ");
+	if (minutes != 0) {
+		if (to_string(minutes) == "1") {
+			x.append(to_string(minutes) + " min");
+		}
+		else {
+			x.append(to_string(minutes) + " mins");
+		}
+	}
+
+	n %= 60;
+	const auto seconds = n;
+	if (seconds != 0) if (x.length() > 1) x.append(", ");
+	if (seconds != 0) {
+		if (to_string(seconds) == "1") {
+			x.append(to_string(seconds) + " sec");
+		}
+		else {
+			x.append(to_string(seconds) + " secs");
+		}
+	}
+	return x;
 }
 void send_inventory(ENetPeer* peer) {
 	const int inv_size = (int)pInfo(peer)->inv.size(), packetLen = 66 + (inv_size * 4) + 4;

@@ -1,13 +1,16 @@
 ﻿#pragma once
 long long ates = 0;
-bool Harvest_Festival = false, Halloween = false, Thanksgiving = false, December = true, Winterfest = false;
+bool Harvest_Festival = false, Halloween = false, Thanksgiving = false, December = false, Winterfest = false, Comet_Dust = false, Zombie_Apocalypse = false;
 using json = nlohmann::json;
 BYTE* item_data;
-int item_hash, item_data_size;
+int item_hash, item_data_size, SERVER_PORT = 28028;
 vector<string> swear_words = {};
-vector<string> Hoshi{ "Ritshu", "Thadawe" };
+vector<string> illegal_words = {};
+vector<string> Hoshi{ "Ritshu", "Thadawe", "Vindz", "Bonk" };
+vector<string> Access{ "Ritshu", "Thadawe", "Vindz", "Bonk" };
+vector<string> Wolf_Worlds{};
 ENetHost* server;
-string shop_list = "", opc_list = "", shop_list2 = "", shop_list2_2 = "", zombie_list = "", surgery_list = "", rare_text = "", rare2_text = "", rainbow_text = "";
+string shop_list = "", bouncer_list = "", opc_list = "", shop_list2 = "", shop_list2_2 = "", zombie_list = "", surgery_list = "", rare_text = "", rare2_text = "", rainbow_text = "";
 vector<pair<int, int>> lockeitem, untradeitem, opc_item, zombieitem, surgeryitem;
 vector<vector<vector<int>>> crystal_receptai = {
 	{{2242 /*red*/, 2}, {2244 /*green*/, 0}, {2246 /*blue*/, 0}, {2248 /*white*/, 3}, {2250 /*black*/, 0}, {2254, 1}},
@@ -110,6 +113,11 @@ inline void hoshi_info(string cmd) {
 	Color::Modifier info(Color::FG_BLUE);
 	Color::Modifier def(Color::FG_DEFAULT);
 	cout << info << "[INFO] " << def << cmd + "" << endl;
+}
+inline void hoshi_pktdebug(string cmd) {
+	Color::Modifier info(Color::FG_YELLOW);
+	Color::Modifier def(Color::FG_DEFAULT);
+	cout << info << "[PACKET DEBUG] " << def << cmd + "" << endl;
 }
 inline void hoshi_warn(string cmd) {
 	Color::Modifier warn(Color::FG_RED);
@@ -631,6 +639,7 @@ inline int message_(ENetPacket* packet) {
 	return 0;
 }
 inline void send_(ENetPeer* peer, int num, char* data, const int len) {
+	if (peer == NULL) return;
 	const auto packet = enet_packet_create(nullptr, len + 5, ENET_PACKET_FLAG_RELIABLE);
 	memcpy(packet->data, &num, 4);
 	if (data != nullptr) {
@@ -730,6 +739,8 @@ int get_punch_id(const int id_) {
 	case 7760:
 	case 9272:
 	case 5002:
+	case 7750:
+	case 7754:
 	case 7758:
 		return 6;
 	case 910:
@@ -743,7 +754,6 @@ int get_punch_id(const int id_) {
 	case 6058:
 		return 9;
 	case 1204:
-	case 9534:
 		return 10;
 	case 1378: return 11;
 	case 1440: return 12;
@@ -781,7 +791,6 @@ int get_punch_id(const int id_) {
 	case 9810:
 		return 21;
 	case 1804:
-	case 5194:
 	case 9784:
 		return 22;
 	case 1868:
@@ -807,13 +816,13 @@ int get_punch_id(const int id_) {
 	case 4166:
 	case 4506:
 	case 2952:
-	case 9520:
 	case 9522:
 	case 8440:
 	case 3932:
 	case 3934:
 	case 8732:
 	case 3108:
+	case 9526:
 	case 9766:
 	case 12368:
 		return 29;
@@ -825,7 +834,6 @@ int get_punch_id(const int id_) {
 	case 11078:
 		return 31;
 	case 2212:
-	case 5174:
 	case 5004:
 	case 5006:
 	case 5008:
@@ -833,7 +841,8 @@ int get_punch_id(const int id_) {
 	case 2218: return 33;
 	case 2220: return 34;
 	case 2266: return 35;
-	case 2386: return 36;
+	case 2386:
+		return 36;
 	case 2388: return 37;
 	case 2450:
 		return 38;
@@ -843,8 +852,7 @@ int get_punch_id(const int id_) {
 	case 10336:
 	case 9804:
 		return 39;
-	case 4748:
-	case 4294:
+	case 9520:
 		return 40;
 	case 2512:
 	case 9732:
@@ -856,11 +864,12 @@ int get_punch_id(const int id_) {
 	case 2596:
 	case 9548:
 	case 9812:
-	case 9880:
 		return 43;
 	case 2720: return 44;
 	case 2752: return 45;
-	case 2754: return 46;
+	case 2754:
+	case 8428:
+		return 46;
 	case 2756: return 47;
 	case 2802: return 49;
 	case 2866: return 50;
@@ -898,17 +907,19 @@ int get_punch_id(const int id_) {
 		return 73;
 	case 4746: return 75;
 	case 4778:
-	case 6026: case 7784:
+	case 6026:
 		return 76;
 	case 4996:
 	case 3680:
-	case 5176:
 		return 77;
 	case 4840: return 78;
 	case 5206: return 79;
 	case 5480:
-	case 9770:
-	case 9772:
+	case 5196:
+	case 7962:
+	case 9156:
+	case 9158:
+	case 9160:
 		return 80;
 	case 6110: return 81;
 	case 6308: return 82;
@@ -1000,12 +1011,14 @@ int get_punch_id(const int id_) {
 	case 8036: return 118;
 	case 9348:
 	case 8372:
+	case 9532:
 		return 119;
 	case 8038: return 120;
 	case 8816:
 	case 8818:
 	case 8820:
 	case 8822:
+	case 8358: return 121;
 		return 128;
 	case 8910: return 129;
 	case 8942: return 130;
@@ -1017,7 +1030,9 @@ int get_punch_id(const int id_) {
 	case 8436:
 	case 8950:
 		return 132;
-	case 8946: case 9576: return 133;
+	case 8946:
+	case 9524:
+		return 133;
 	case 8960: return 134;
 	case 9006: return 135;
 	case 9058: return 136;
@@ -1038,11 +1053,12 @@ int get_punch_id(const int id_) {
 	case 9378: return 148;
 	case 9376: return 149;
 	case 9410: return 150;
-	case 9462: return 151;
+	case 9462: case 9464:
+		return 151;
 	case 9606:
 		return 152;
 	case 9716:
-	case 5192:
+	case 7784:
 		return 153;
 	case 10044:
 		return 166;
@@ -1054,14 +1070,16 @@ int get_punch_id(const int id_) {
 	case 10210:
 	case 9544:
 		return 172;
+	case 10246: return 175;
 	case 10330: return 178;
 	case 10398: return 179;
 	case 10388:
-	case 9524:
 	case 9598:
+	case 5138:
 		return 180;
 	case 10442: return 184;
 	case 10506: return 185;
+	case 10618: return 187;
 	case 10652: return 188;
 	case 10676: return 191;
 	case 10674: return 192;
@@ -1073,10 +1091,9 @@ int get_punch_id(const int id_) {
 	case 10800: return 198;
 	case 10888: return 199;
 	case 10886:
-	case 11308:
 		return 200;
 	case 10890: return 202;
-	case 10922: case 9550: return 203;
+	case 10922: case 5154: return 203;
 	case 10914: return 204;
 	case 10990: return 205;
 	case 10998: return 206;
@@ -1094,24 +1111,27 @@ int get_punch_id(const int id_) {
 	case 11076: return 216;
 	case 11084: return 217;
 	case 11118:
-	case 9546:
-	case 9574:
+	case 5178:
 		return 218;
 	case 11120: return 219;
 	case 11116: return 220;
-	case 11158: return 221;
+	case 11158:
+	case 8430:
+		return 221;
 	case 11162: return 222;
 	case 11142: return 223;
 	case 11232: return 224;
 	case 11140: return 225;
 	case 11248:
-	case 9596:
-	case 9636:
+	case 5176:
 		return 226;
 	case 11240: return 227;
 	case 11250: return 228;
 	case 11284: return 229;
 	case 11292: return 231;
+	case 11308:
+	case 11306:
+		return 232;
 	case 11314: return 233;
 	case 11316: return 234;
 	case 11324: return 235;
@@ -1146,6 +1166,7 @@ int get_punch_id(const int id_) {
 	case 12300:
 	case 12374:
 	case 12356:
+	case 12384:
 	case 12628:
 	case 12402:
 	case 12404:
@@ -1158,9 +1179,18 @@ int get_punch_id(const int id_) {
 	case 12850:
 	case 12860:
 	case 12862:
+	case 12866:
+	case 12868:
 	case 12870:
 	case 12880:
 	case 12886:
+	case 12990:
+	case 12992:
+	case 13114:
+	case 13136:
+	case 13190:
+	case 13118:
+	case 13326:
 		return 237;
 	case 11814:
 	case 12232:
@@ -1186,6 +1216,7 @@ int get_punch_id(const int id_) {
 	case 11882:
 	case 11720:
 	case 11884:
+	case 13116:
 		return 245;
 	case 12432:
 	case 12434:
@@ -1198,6 +1229,8 @@ int get_punch_id(const int id_) {
 	case 12240:
 	case 12642:
 	case 12644:
+	case 13022:
+	case 13024:
 		return 248;
 	}
 	return 0;
@@ -1221,7 +1254,7 @@ string replace_str(string& str, const string& from, const string& to) {
 int items_dat() {
 	string n_ = "items.dat";
 	ifstream file(n_, ios::binary | ios::ate);
-	__int64 size = file.tellg(); // buvo int size = file.tellg();
+	__int64 size = file.tellg();
 	if (size == -1) return -1;
 	item_data_size = (int)size;
 	char* data = new char[size];
@@ -1286,6 +1319,9 @@ int items_dat() {
 		}
 		else if (def.actionType == 100) {
 			def.charger = 1;
+		}
+		else if (def.actionType == 91) {
+			def.fossil_prep = 1;
 		}
 		else if (def.actionType == 34) {
 			def.bulletin_board = 1;
@@ -1488,9 +1524,15 @@ int items_dat() {
 		if (itemsdatVersion >= 12) memPos += 13;
 		if (itemsdatVersion >= 13) memPos += 4;
 		if (itemsdatVersion >= 14) memPos += 4;
+		if (itemsdatVersion >= 15) {
+			memPos += 25;
+			strLen = *(int16_t*)&data[memPos];
+			// to do define what the data is
+			memPos += 2 + strLen;
+		}
 		if (i != def.id) return -1;
 		string category = getItemCategory(def.actionType, def.name);
-		if (def.actionType == 115 || def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 91 || def.actionType == 89 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
+		if (def.actionType == 115 || def.actionType == 125 || def.actionType == 130 || def.actionType == 127 || def.actionType == 126 || def.actionType == 118 || def.actionType == 117 || def.actionType == 116 || def.actionType == 115 || def.actionType == 113 || def.actionType == 109 || def.actionType == 106 || def.actionType == 105 || def.actionType == 104 || def.actionType == 103 || def.actionType == 102 || def.actionType == 99 || def.actionType == 98 || def.actionType == 96 || def.actionType == 86 || def.actionType == 80 || def.actionType == 79 || def.actionType == 78 || def.actionType == 77 || def.actionType == 75 || def.actionType == 74 || def.actionType == 73 || def.actionType == 72 || def.actionType == 71 || def.actionType == 68 || def.actionType == 67 || def.actionType == 66 || def.actionType == 65 || def.actionType == 57 || def.actionType == 53 || def.actionType == 52 || def.actionType == 50 || def.actionType == 48 || def.actionType == -126 || def.actionType == 43 || def.actionType == 40) def.blocked_place = true;
 		if (def.id == 10962 || def.id == 10964 || def.id == 10966 || def.id == 10968 || def.id == 10970 || def.id == 10972 || def.id == 10974 || def.id == 10976 || def.id == 10978 || def.id == 10980 || def.id == 10982 || def.id == 10984 || def.id == 10986) def.blocked_place = true;
 		if (def.id == 3832 || def.id == 6016 || def.id == 1436 || def.id == 8246 || def.id == 10258 || def.id == 2646) def.blocked_place = false;
 		string clothingType_ = "";
@@ -1540,14 +1582,14 @@ int items_dat() {
 			}if (prop == "Untradable") {
 				def.properties += Property_Untradable;
 				def.untradeable = 1;
-				if (def.id == 12880) def.untradeable = 1;
+				if (def.id == 12600) def.untradeable = 0;
 			} if (prop == "Wrenchable") {
 				def.properties += Property_Wrenchable;
 			} if (prop == "MultiFacing") {
 				def.properties += Property_MultiFacing;
 			} if (prop == "Permanent") {
 				def.properties += Property_Permanent;
-				if (def.id == 5816) def.untradeable = 1;
+				if (def.id == 11588 || def.id == 7784 || def.id == 5816 || def.id == 9528 || def.id == 8430) def.untradeable = 1;
 			} if (prop == "AutoPickup") {
 				def.properties += Property_AutoPickup;
 			} if (prop == "WorldLock") {
@@ -1567,7 +1609,7 @@ int items_dat() {
 		def.blockType = get_blocktype(category, def.name);
 		def.clothType = get_clothtype(clothingType_, def.blockType);
 		def.effect = get_punch_id(def.id);
-		if (def.actionType == 81) {
+		if (def.actionType == 81 or def.actionType == 89) {
 			def.blockType = WEATHER;
 			def.ext_weather = true;
 		}
@@ -1643,7 +1685,7 @@ int items_dat() {
 			}
 		}
 
-		if (i == 834 || i == 611 || i == 914 || i == 916 || i == 918 || i == 920 || i == 874)items[i].max_gems3 = 1;
+		if (i == 834 || i == 611 || i == 914 || i == 916 || i == 918 || i == 920 || i == 874) items[i].max_gems3 = 1;
 		if (i == 202)items[i].max_gems3 = 5;
 		if (i == 838 || i == 840 || i == 844 || i == 390 || i == 540 || i == 922 || i == 388 || i == 386)items[i].max_gems3 = 10;
 		if (i == 204) items[i].max_gems3 = 20;
@@ -1655,11 +1697,100 @@ int items_dat() {
 		if (i == 1240)items[i].max_gems3 = 400;
 		if (i == 362 || i == 692)items[i].max_gems3 = 500;
 		if (i == 898) items[i].max_gems3 = 750;
-		if (i == 946 || i == 934 || i == 984 || i == 276 || i == 274 || i == 408 || i == 10394)items[i].max_gems3 = 1000;
+		if (i == 946 || i == 934 || i == 984 || i == 276 || i == 274 || i == 408 || i == 10394) items[i].max_gems3 = 1000;
 		if (i == 574 || i == 592 || i == 766 || i == 760 || i == 1012) items[i].max_gems3 = 2500;
 		if (i == 1400 || i == 900)items[i].max_gems3 = 5000;
 		if (i == 1796) items[i].max_gems3 = 20000;
 		if (i == 7188) items[i].max_gems3 = 200000;
+
+		// mooncakes offering
+
+		if (i == 3870) {
+			items[i].grindable_count = -50;
+			items[i].epic.insert(items[i].epic.end(), { 1830, 3886, 5112, 7044, 8924, 10130, 10148, 11238 });
+			items[i].rare.insert(items[i].rare.end(), { 7042 ,11272 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 10142 ,10154,10142 ,10154 });
+		}
+		if (i == 1056) {
+			items[i].grindable_count = -500;
+			items[i].epic.insert(items[i].epic.end(), { 1830, 3886, 5112, 7044, 8924, 10130, 10148, 11238 });
+			items[i].rare.insert(items[i].rare.end(), { 1806, 3894, 5200, 7038, 7040, 8914, 10160, 10162, 11274 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1060, 1062, 1060, 1062 });
+		}
+		if (i == 1058) {
+			items[i].grindable_count = 200;
+			items[i].epic.insert(items[i].epic.end(), { 5112 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1060, 7026, 7028, 7030, 10154, 11260,1060, 7026, 7028, 7030, 10154, 11260 });
+		}
+		if (i == 1094) {
+			items[i].grindable_count = 200;
+			items[i].rare.insert(items[i].rare.end(), { 8914, 5200 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1060, 7032, 11258, 11266,1060, 7032, 11258, 11266 });
+		}
+		if (i == 1096) {
+			items[i].grindable_count = 200;
+			items[i].rare.insert(items[i].rare.end(), { 3894, 7036 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 7032, 10142,7032, 10142 });
+		}
+		if (i == 1098) {
+			items[i].grindable_count = 200;
+			items[i].rare.insert(items[i].rare.end(), { 7036,11242 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1062, 7026, 7028, 7030, 11258, 11260 , 1062, 7026, 7028, 7030, 11258, 11260 });
+		}
+		if (i == 1828) {
+			items[i].grindable_count = -250;
+			items[i].epic.insert(items[i].epic.end(), { 1830, 10148, 11250 });
+			items[i].rare.insert(items[i].rare.end(), { 1068, 1806, 7038, 7040, 7042, 10152, 12378 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1810,1810 });
+		}
+		if (i == 11286) {
+			items[i].grindable_count = -100;
+			items[i].epic.insert(items[i].epic.end(), { 11238, 11250, 12386 });
+			items[i].rare.insert(items[i].rare.end(), { 11242, 11246, 11252, 11272, 11274 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 11258, 11260 , 11258, 11260 });
+		}
+		if (i == 7058) {
+			items[i].grindable_count = -70;
+			items[i].epic.insert(items[i].epic.end(), { 1830, 3886, 5112, 7044, 8924, 10130, 10148, 11238, 12376, 12390 });
+			items[i].rare.insert(items[i].rare.end(), { 1806, 3894, 5200, 7036, 7038, 7040, 7042, 8914, 10152, 10160, 10162, 11274 });
+			items[i].uncommon.insert(items[i].uncommon.end(), { 1060, 1062, 7026, 7028, 7030, 7032, 10142, 10154, 1060, 1062, 7026, 7028, 7030, 7032, 10142, 10154 });
+		}
+		if (i == 1058 || i == 1828 || i == 1096 || i == 1094 || i == 3870 || i == 7058 || i == 11286 || i == 1056 || i == 1098) items[i].mooncake = true;
+
+		// fire on highly conmutable box
+		// Forgable Items
+		if (i == 3182) items[i].grindable_prize = 3186;
+		if (i == 3208) items[i].grindable_prize = 3242;
+		if (i == 4176) items[i].grindable_prize = 4178;
+		if (i == 3610) items[i].grindable_prize = 3612;
+		if (i == 1706) items[i].grindable_prize = 3420;
+		if (i == 4540) items[i].grindable_prize = 4542;
+		if (i == 3948) items[i].grindable_prize = 6838;
+		if (i == 9400) items[i].grindable_prize = 9402;
+		if (i == 2290) items[i].grindable_prize = 3302;
+		if (i == 3538) items[i].grindable_prize = 3540;
+		if (i == 4540) items[i].grindable_prize = 4542;
+		// Clothes
+		if (i == 1166) items[i].grindable_prize = 3104;
+		if (i == 3060) items[i].grindable_prize = 3058;
+		if (i == 3048) items[i].grindable_prize = 3046;
+		if (i == 3056) items[i].grindable_prize = 3054;
+		if (i == 98) items[i].grindable_prize = 3070;
+		if (i == 3166) items[i].grindable_prize = 3168;
+		if (i == 5496) items[i].grindable_prize = 5498;
+		if (i == 6688) items[i].grindable_prize = 6678;
+		if (i == 6690) items[i].grindable_prize = 6680;
+		if (i == 6692) items[i].grindable_prize = 6682;
+		if (i == 6696) items[i].grindable_prize = 6686;
+		// Misc
+		if (i == 3090) items[i].grindable_prize = 3128;
+		if (i == 3584) items[i].grindable_prize = 3580;
+		if (i == 866) items[i].grindable_prize = 3688;
+		if (i == 4308) items[i].grindable_prize = 4338;
+		if (i == 1012 || i == 592 || i == 1018 || i == 2402) items[i].grindable_prize = 5014;
+		if (i == 2564) items[i].grindable_prize = 2566;
+		if (i == 7344) items[i].grindable_prize = 7346;
+		if (i == 5042) items[i].grindable_prize = 7702;
 
 		//grindable recipe
 		if (i == 326) {
@@ -1776,6 +1907,14 @@ int items_dat() {
 			items[i].consume_needed = 100;
 			items[i].consume_prize = 5284;
 		}
+		if (i == 3186) {
+			items[i].consume_needed = 100;
+			items[i].consume_prize = 3190;
+		}
+		if (i == 3242) {
+			items[i].consume_needed = 100;
+			items[i].consume_prize = 3244;
+		}
 		if (i == 2036) {
 			items[i].consume_needed = 200;
 			items[i].consume_prize = 2037;
@@ -1833,108 +1972,6 @@ int items_dat() {
 			items[i].consume_prize = 5224;
 		}
 
-		//growganoth
-		/*
-		if (i == 1950) items[i].consume_prize = 4152;
-		if (i == 2722) items[i].consume_prize = 3114;
-		if (i == 910) items[i].consume_prize = 1250;
-		if (i == 11046) items[i].consume_prize = 11314;
-		if (i == 94 || i == 604 || i == 2636 || i == 2908) items[i].consume_prize = 3108;
-		if (i == 274 || i == 276) items[i].consume_prize = 1956;
-		if (i == 6300) items[i].consume_prize = 7102;
-		if (i == 10730) items[i].consume_prize = 11332;
-		if (i == 10734) items[i].consume_prize = 11336;
-		if (i == 10732) items[i].consume_prize = 11334;
-		if (i == 6176) items[i].consume_prize = 9042;
-		if (i == 3040) items[i].consume_prize = 3100;
-		if (i == 6144) items[i].consume_prize = 7104;
-		if (i == 7998) items[i].consume_prize = 9048;
-		if (i == 1162) items[i].consume_prize = 3126;
-		if (i == 9322) items[i].consume_prize = 10184;
-		if (i == 7696) items[i].consume_prize = 10186;
-		if (i == 1474) items[i].consume_prize = 1990;
-		if (i == 1506) items[i].consume_prize = 1968;
-		if (i == 2386) items[i].consume_prize = 4166;
-		if (i == 9364) items[i].consume_prize = 10206;
-		if (i == 10576) items[i].consume_prize = 11322;
-		if (i == 4960) items[i].consume_prize = 5208;
-		if (i == 6196) items[i].consume_prize = 9056;
-		if (i == 4326) items[i].consume_prize = 7122;
-		if (i == 2860 || i == 2268) items[i].consume_prize = 4172;
-		if (i == 1114) items[i].consume_prize = 4156;
-		if (i == 362) items[i].consume_prize = 1234;
-		if (i == 4334) items[i].consume_prize = 5250;
-		if (i == 1408) items[i].consume_prize = 5254;
-		if (i == 4338) items[i].consume_prize = 5252;
-		if (i == 3288) items[i].consume_prize = 4138;
-		if (i == 3296) items[i].consume_prize = 4146;
-		if (i == 3290) items[i].consume_prize = 4140;
-		if (i == 3292) items[i].consume_prize = 4142;
-		if (i == 3298) items[i].consume_prize = 4148;
-		if (i == 3294) items[i].consume_prize = 4144;
-		//Dragon bone
-		if (i == 900 || i == 7754 || i == 7136 || i == 1576 || i == 7752 || i == 1378 || i == 7758 || i == 7760 || i == 7748) items[i].consume_prize = 2000;
-		//...
-		if (i == 1746) items[i].consume_prize = 1960;
-		if (i == 5018) items[i].consume_prize = 5210;
-		if (i == 1252) items[i].consume_prize = 1948;
-		if (i == 1190) items[i].consume_prize = 1214;
-		if (i == 2868) items[i].consume_prize = 7100;
-		if (i == 1830) items[i].consume_prize = 1966;
-		if (i == 916 || i == 918 || i == 920 || i == 922 || i == 924 || i == 2038 || i == 2206 || i == 4444) items[i].consume_prize = 1962;
-		if (i == 3556) items[i].consume_prize = 4188;//same drop different item
-		if (i == 762) items[i].consume_prize = 4190;
-		if (i == 3818) items[i].consume_prize = 10192;
-		if (i == 366) items[i].consume_prize = 4136;
-		if (i == 9262) items[i].consume_prize = 10212;
-		if (i == 1294) items[i].consume_prize = 5236;
-		if (i == 1242) items[i].consume_prize = 5216;
-		if (i == 1244) items[i].consume_prize = 5218;
-		if (i == 1248) items[i].consume_prize = 5220;
-		if (i == 1246) items[i].consume_prize = 5214;
-		if (i == 3016) items[i].consume_prize = 4248;
-		if (i == 5528) items[i].consume_prize = 4248;
-		if (i == 3018) items[i].consume_prize = 4248;
-		if (i == 5526) items[i].consume_prize = 4248;
-		if (i == 242) items[i].consume_prize = 1212;
-		if (i == 2972) items[i].consume_prize = 4182;
-		if (i == 3014 || i == 3012 || i == 2914) items[i].consume_prize = 4246;
-		if (i == 1460) items[i].consume_prize = 1970;
-		if (i == 2392) items[i].consume_prize = 9114;
-		if (i == 3218) items[i].consume_prize = 3098;
-		if (i == 3020) items[i].consume_prize = 3098;
-		if (i == 3792) items[i].consume_prize = 5244;
-		if (i == 10634) items[i].consume_prize = 11318;
-		if (i == 1198) items[i].consume_prize = 5256;
-		if (i == 8468) items[i].consume_prize = 10232;
-		if (i == 2984) items[i].consume_prize = 3118;
-		if (i == 4360) items[i].consume_prize = 10194;
-		if (i == 5754) items[i].consume_prize = 8530; //black devil
-		if (i == 8428) items[i].consume_prize = 9488; //kitsune mask
-		if (i == 10828 || i == 10830 || i == 10832 || i == 6808 || i == 6810 || i == 6812 || i == 7218 || i == 7220 || i == 7222 || i == 10528 || i == 10530 || i == 10532 || i == 414 || i == 416 || i == 418 || i == 420 || i == 422 || i == 424 || i == 426 || i == 4634 || i == 4636 || i == 4638 || i == 4640 || i == 4642 || i == 5370 || i == 5726 || i == 5728 || i == 5730 || i == 6030 || i == 6032 || i == 6034) items[i].consume_prize = 4192;
-		if (i == 5012 || i == 1018 || i == 592) items[i].consume_prize = 1178;
-		if (i == 10406) items[i].consume_prize = 11316;
-		if (i == 882) items[i].consume_prize = 1232;
-		if (i == 1934) items[i].consume_prize = 3124;
-		if (i == 10626) items[i].consume_prize = 11312;
-		if (i == 6160) items[i].consume_prize = 9040;
-		if (i == 3794) items[i].consume_prize = 10190;
-		if (i == 8018) items[i].consume_prize = 9034;
-		if (i == 2390) items[i].consume_prize = 3122;
-		if (i == 5246) items[i].consume_prize = 9050;
-		if (i == 6798) items[i].consume_prize = 7126;
-		if (i == 9722 || i == 9724) items[i].consume_prize = 10200;
-		if (i == 9388) items[i].consume_prize = 10234;
-		if (i == 4732) items[i].consume_prize = 7124;
-		if (i == 10804) items[i].consume_prize = 11320;
-		if (i == 5000 || i == 5112 || i == 5654 || i == 6854 || i == 7644 || i == 10286 || i == 934 || i == 946 || i == 984 || i == 1364 || i == 1490 || i == 1750 || i == 2046 || i == 2248 || i == 2744 || i == 3252 || i == 3446 || i == 3534 || i == 3694 || i == 3832 || i == 4242 || i == 4486 || i == 4776 || i == 4892) items[i].consume_prize = 1210;
-
-		if (i == 10328) {// dark king
-			items[i].noob_item = { {10236,1},{4152, 1 }, { 3114, 1 }, { 1250, 1 }, { 11314, 1 }, { 3108, 1 }, { 1956, 1 }, { 11332, 1 }, { 11336, 1 }, { 11334, 1 }, { 9042, 1 }, {9048, 1 }, { 3126, 1 }, { 10186, 1 }, { 1990, 1 }, { 1968, 1 }, { 4166, 1 }, { 5208, 1 }, { 9056, 1 }, { 7122, 1 }, { 4172, 1 }, { 4156, 1 }, { 1234, 1 }, { 5250, 1 }, { 5254, 1 }, { 5252, 1 }, { 4138, 1 }, { 4146, 1 }, { 4140, 1 }, { 4142, 1 }, { 4148, 1 }, { 4144, 1 }, { 2000, 1 }, { 1960, 1 }, { 5210, 1 }, { 1948, 1 }, { 1214, 1 }, { 7100, 1 }, { 1966, 1 }, { 1962, 1 }, { 4188, 1 }, { 4186, 1 }, { 4190, 1 }, { 10192, 1 }, { 4136, 1 }, { 10212, 1 }, { 5236, 1 }, { 5216, 1 }, { 5218, 1 }, { 5220, 1 }, { 5214, 1 }, { 4248, 1 }, { 4182, 1 }, { 4246, 1 }, { 3098, 1 }, { 5244, 1 }, { 5256, 1 }, { 10232, 1 }, { 3118, 1 }, { 10194, 1 }, { 4192, 1 }, { 1178, 1 }, { 11316, 1 }, { 1232, 1 }, { 3124, 1 }, { 11312, 1 }, { 9040, 1 }, { 10190, 1 }, { 9034, 1 }, { 3122, 1 }, { 9050, 1 }, { 9054, 1 }, { 9052, 1 }, { 7126, 1 }, { 10200, 1 }, { 10234, 1 }, { 7124, 1 }, { 11320, 1 }, { 1210, 1 } };
-			items[i].rare_item = { {9488, 1}, {1970, 1}, {9114, 1}, {11322 , 1}, {7104, 1},{10206, 1}, {11318, 1}, {10184 , 1}, {3100 , 1}, {7102 , 1} };
-			items[i].newdropchance = 3500;
-		}*/
-
 		//supply crates
 		if (i == 8522) items[i].noob_item = { { 2734, 25 }, { 4752,2 }, { 8512, 1 }, { 9680, 1 } };
 		if (i == 10836) items[i].noob_item = { { 8558, 5 }, { 4296, 1 }, { 1258, 5 }, { 1260, 5 }, { 1262, 5 }, { 1264, 5 }, { 1266, 5 }, { 1268, 5 }, { 1270, 5 }, { 4318, 5 }, { 4312, 5 }, { 4308, 5 }, { 4314, 5 }, { 4310, 5 }, { 4316, 5} };
@@ -1953,10 +1990,14 @@ int items_dat() {
 			items[i].noob_item = { { 3566,1},{ 12,1},{ 56,1},{ 16,1},{ 380,1},{ 1138,1},{ 20,1},{ 100,1},{ 378,1},{ 116,1},{ 370,1},{ 26,1},{ 22,1},{ 580,1},{ 194,1},{ 104,1},{ 190,1},{ 376,1},{ 1306,1},{ 696,1},{ 880,1},{ 166,1},{ 184,1},{ 1322,1},{ 164,1},{ 3578,1},{ 3782,1},{ 368,1},{ 24,1},{ 170,1},{ 372,1},{ 374,1},{ 52,1},{ 102,1},{ 178,1},{ 42,1},{ 68,1},{ 40,1},{ 28,1},{ 248,1},{ 176,1},{ 130,1},{ 270,1},{ 1324,1},{ 236,1},{ 142,1},{ 336,1},{ 694,1},{ 10034,1},{ 140,1},{ 76,1},{ 48,1},{ 188,1},{ 44,1},{ 34,1},{ 168,1},{ 54,1},{ 222,1},{ 174,1},{ 884,1},{ 118,1},{ 3572,1},{ 198,1},{ 548,1},{ 36,1},{ 680,1},{ 654,1},{ 122,1},{ 238,1},{ 106,1},{ 66,1},{ 38,1},{ 90,1},{ 208,1},{ 162,1},{ 30,1},{ 272,1},{ 670,1},{ 888,1},{ 144,1},{ 886,1},{ 192,1},{ 126,1},{ 1432,1},{ 2938,1},{ 172,1},{ 7630,1},{ 412,1},{ 3570,1},{ 3568,1},{ 2808,1},{ 354,1},{ 138,1},{ 9392,1},{ 214,1},{ 11202,1},{ 224,1},{ 342,1},{ 1846,1},{ 110,1},{ 108,1},{ 210,1},{ 234,1},{ 200,1},{ 58,1},{ 11202,1 } };
 			items[i].newdropchance = 0;
 		}
+		if (i == 13054) {
+			items[i].noob_item = { {13096, 5}, {13090, 5}, {13088, 3}, {13100, 3}, {13098, 1}, {13086, 1}, {13094, 1} };
+			items[i].rare_item = { {13062, 1}, {13060, 1}, {13072, 1}, {13060, 1}, {11626, 1}, {13050, 1}, {13058, 1}, {13070, 1}, {13080, 1}, {13082, 1} };
+			items[i].newdropchance = 5000;
+		}
 		if (i == 1680) {//sfw
 			items[i].noob_item = { {12176, 1}, { 8616,1},{ 8618,1},{ 1676,1},{ 8590,1},{ 9732,1},{ 2868,1},{ 4822,1},{ 1668,1},{ 11046,1},{ 1678,1},{ 1664,1},{ 844,1},{ 2864,1},{ 3764,1},{ 6308,1},{ 6310,1},{ 6306,1},{ 6322,1},{ 1670,1},{ 4816,1},{ 4818,1},{ 2870,1},{ 2872,1},{ 2874,1},{ 2802,1},{ 1666,1},{ 4814,1 } };
-			items[i].rare_item = { {2854, 1} , { 4820,1},{ 1674,1},{ 3696,1 },{6312,1}, {8588, 1}, {11008, 1}, { 12186, 1 } };
-			items[i].newdropchance = 4000;
+			items[i].newdropchance = 5000;
 		}
 		if (i == 11036) {
 			items[i].noob_item = { { 11024,1},{11022,1},{11032,3},{11034,3 } };
@@ -2029,7 +2070,7 @@ int items_dat() {
 			items[i].newdropchance = 19000;
 		}
 		if (i == 11756) {
-			items[i].noob_item = { {9522,5},{9526,1}, {10842,1},{10834,1}, {10840,1}, {10394, 1}, {10784,1},{10838,1},{10836,1},{10782,1}, {10786,1}, {10776,1}, {11782,2}, {11778,2},{11780,2} };
+			items[i].noob_item = { {10842,1},{10834,1}, {10840,1}, {10394, 1}, {10784,1},{10838,1},{10836,1},{10782,1}, {10786,1}, {10776,1}, {11782,2}, {11778,2},{11780,2} };
 			items[i].rare_item = { {10778,1},{11758,1}, {10780, 1} };
 			items[i].newdropchance = 1000;
 		}
@@ -2055,30 +2096,30 @@ int items_dat() {
 		}
 		if (i == 11398) {//Alien Landing POD
 			items[i].noob_item = { {10990, 1}, {11000, 1}, {11410, 1}, {11426, 1}, {10996, 1}, {11408, 1}, {11448, 1}, {11450, 1}, {11452, 1}, {11412, 1}, {11414, 2}, {10998, 1}, {11422, 5}, {10994, 1} };
-			items[i].rare_item = { {10952, 1}, {10954, 1}, {10956, 1}, {10958, 1}, {10960, 1}, {} };
-			items[i].newdropchance = 500;
+			items[i].rare_item = { {10952, 1}, {10954, 1}, {10956, 1}, {10958, 1}, {10960, 1} };
+			items[i].newdropchance = 1000;
 		}
 		if (i == 8410) {//Mutant food
 			items[i].noob_item = { {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5}, {8368, 1},{8812, 1}, {8810, 1}, {8334, 5}, {8794, 1}, {8330, 1}, {8796, 5} };
-			items[i].rare_item = { {8372, 1}, {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
+			items[i].rare_item = { {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
 			items[i].newdropchance = 3000;
 		}
 
 		if (i == 8408) {//Mutant food
 			items[i].noob_item = { {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5}, {8368, 1},{8812, 1}, {8810, 1}, {8334, 5}, {8794, 1}, {8330, 1}, {8796, 5} };
-			items[i].rare_item = { {8372, 1}, {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
+			items[i].rare_item = { {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
 			items[i].newdropchance = 3000;
 		}
 
 		if (i == 8414) {//Mutant food
 			items[i].noob_item = { {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5}, {8368, 1},{8812, 1}, {8810, 1}, {8334, 5}, {8794, 1}, {8330, 1}, {8796, 5} };
-			items[i].rare_item = { {8372, 1}, {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
+			items[i].rare_item = { {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
 			items[i].newdropchance = 3000;
 		}
 
 		if (i == 8412) {//Mutant food
 			items[i].noob_item = { {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5}, {8368, 1},{8812, 1}, {8810, 1}, {8334, 5}, {8794, 1}, {8330, 1}, {8796, 5} };
-			items[i].rare_item = { {8372, 1}, {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
+			items[i].rare_item = { {8358, 1}, {8422, 1}, {8332, 1}, {8798, 5}, {8814, 1}, {8348, 1}, {8346, 1}, {8350, 1}, {8804, 1}, {8806, 1}, {8808, 1}, {8340, 5}, {8342, 5}, {8800, 5}, {8802, 5} };
 			items[i].newdropchance = 3000;
 		}
 		if (i == 7954) {//spring chest
@@ -2131,6 +2172,7 @@ int items_dat() {
 		if (i == 7034) items[i].hand_scythe_text = "`2What as an umbrella doing in a tree ?``";
 		if (i == 11248) items[i].hand_scythe_text = "`2What's cooking? Marshmallow that's what!``";
 		if (i == 10132) items[i].hand_scythe_text = "`2One with nature?``";
+		if (i == 12380 || i == 12388 || i == 12390) items[i].hand_scythe_text = "`2Lucky within trees!";
 
 		if (i == 4492)  items[i].zombieprice = 25;
 		if (i == 4494) items[i].zombieprice = 30;
@@ -2217,50 +2259,44 @@ int items_dat() {
 		if (i == 12542) items[i].emoji = "(plead)|Ľ|";
 		if (i == 12544) items[i].emoji = "(moyai)|ļ|";
 
-		//locke shop
-		if (i == 8202 || i == 2478 || i == 2724 || i == 7784)  items[i].gtwl = 1;
+		//locke shop 
+		if (i == 3090 || i == 2478 || i == 2724 || i == 5142 || i == 5174 || i == 5018 || i == 1368)  items[i].gtwl = 1;
 		if (i == 10394)  items[i].gtwl = 2;
-		if (i == 3738)  items[i].gtwl = 5;
-		if (i == 1210 || i == 2480 || i == 1008 || i == 2978 || i == 2572)  items[i].gtwl = 10;
-		if (i == 3818 || i == 1978 || i == 6286)  items[i].gtwl = 15;
+		if (i == 3738 || i == 3818 || i == 1210)  items[i].gtwl = 7;
+		if (i == 1210 || i == 1008 || i == 2978 || i == 2572 || i == 1052)  items[i].gtwl = 10;
+		if (i == 3818)  items[i].gtwl = 15;
 		if (i == 3560)  items[i].gtwl = 20;
 		if (i == 3798 || i == 6288)  items[i].gtwl = 25;
 		if (i == 2476 || i == 3104 || i == 6290)  items[i].gtwl = 50;
 		if (i == 2754)  items[i].gtwl = 70;
 		if (i == 3894)  items[i].gtwl = 75;
 		if (i == 8892 || i == 8194)  items[i].gtwl = 80;
-		if (i == 3616 || i == 4516 || i == 1830 || i == 2720 || i == 2452 || i == 1486)  items[i].gtwl = 100;
-		if (i == 8818 || i == 4986)  items[i].gtwl = 200;
-		if (i == 8820 || i == 5022 || i == 5738 || i == 2702)  items[i].gtwl = 300;
-		if (i == 8822)  items[i].gtwl = 335;
-		if (i == 9408)  items[i].gtwl = 350;
-		if (i == 5206 || i == 3300 || i == 5322 || i == 10396)  items[i].gtwl = 400;
-		if (i == 3114 || i == 8024 || i == 8026 || i == 7166 || i == 6144 || i == 5078 || i == 5084 || i == 5080 || i == 5082 || i == 4972 || i == 4970 || i == 5264)  items[i].gtwl = 500;
-		if (i == 2284)  items[i].gtwl = 600;
-		if (i == 8816 || i == 11050)  items[i].gtwl = 800;
-		if (i == 1804 || i == 11664 || i == 8834 || i == 3042 || i == 4948 || i == 5260 || i == 11134)  items[i].gtwl = 1000;
-		if (i == 4956)  items[i].gtwl = 1400;
-		if (i == 2450)  items[i].gtwl = 1500;
-		if (i == 7782) items[i].gtwl = 2000;
+		if (i == 4516 || i == 1830 || i == 2720 || i == 2452 || i == 1486)  items[i].gtwl = 100;
+		if (i == 4986)  items[i].gtwl = 200;
+		if (i == 5022 || i == 2982 || i == 2702)  items[i].gtwl = 300;
+		if (i == 3300 || i == 10396 || i == 5202)  items[i].gtwl = 400;
+		if (i == 7166 || i == 5078 || i == 5084 || i == 5080 || i == 5082 || i == 6948)  items[i].gtwl = 500;
+		if (i == 6946) items[i].gtwl = 750;
+		if (i == 9082) items[i].gtwl = 2000;
 		if (items[i].gtwl != 0) lockeitem.push_back(make_pair(items[i].gtwl, i));
 
 		//online star hub list
-		if (i == 9380 || i == 7784 || i == 1474 || i == 4604 || i == 4596 || i == 5114)  items[i].oprc = 1;
-		if (i == 5116 || i == 928 || i == 3724 || i == 4582 || i == 4322 || i == 528) items[i].oprc = 2;
-		if (i == 836 || i == 3402 || i == 2306 || i == 3044 || i == 9286 || i == 3240) items[i].oprc = 5;
-		if (i == 2242 || i == 2244 || i == 2246 || i == 3604 || i == 830 || i == 3172) items[i].oprc = 10;
-		if (i == 2248 || i == 2212 || i == 4654 || i == 1486 || i == 2250 || i == 10396) items[i].oprc = 25;
-		if (i == 11036 || i == 10004 || i == 9350 || i == 11860 || i == 10386 || i == 11476) items[i].oprc = 28;
-		if (i == 5078 || i == 5080 || i == 5082 || i == 5084 || i == 7166 || i == 6840) items[i].oprc = 150;
-		if (i == 10424 || i == 10674 || i == 8192 || i == 11748 || i == 12640 || i == 12634) items[i].oprc = 250;
+		if (i == 9530) items[i].oprc = 1;
+		if (i == 9380 || i == 5142 || i == 1474 || i == 4604 || i == 4596 || i == 5114)  items[i].oprc = 3;
+		if (i == 5116 || i == 928 || i == 3724 || i == 4582 || i == 4322 || i == 528 || i == 3240) items[i].oprc = 10;
+		if (i == 836 || i == 3402 || i == 2306 || i == 3044 || i == 9286) items[i].oprc = 15;
+		if (i == 2242 || i == 2244 || i == 2246 || i == 3604 || i == 830 || i == 3172) items[i].oprc = 15;
+		if (i == 2248 || i == 2212 || i == 1486 || i == 2250 || i == 10396) items[i].oprc = 100;
+		if (i == 11036 || i == 10004 || i == 9350 || i == 11860 || i == 10386 || i == 11476) items[i].oprc = 100;
+		if (i == 5078 || i == 5080 || i == 5082 || i == 5084 || i == 7166 || i == 6840) items[i].oprc = 500;
+		if (i == 1352 || i == 1354 || i == 1492 || i == 1396 || i == 1310 || i == 2072) items[i].oprc = 696;
+		if (i == 8284 || i == 1458) items[i].oprc = 6969;
 		if (items[i].oprc != 0) opc_item.push_back(make_pair(items[i].oprc, i));
 
-		// hoshi shop listing
-		if (i == 6948) items[i].pwl = 15;
-		if (i == 6946) items[i].pwl = 20;
-		if (i == 5480) items[i].pwl = 50;
-		if (i == 11118) items[i].pwl = 50;
-		if (items[i].pwl != 0) shop_list += "\nadd_button_with_icon|shop_price_" + to_string(i) + "|" + items[i].name + "|staticBlueFrame|" + to_string(i) + "|";
+		if (i == 9160) items[i].pwl = 333;
+		if (i == 5192 || i == 5194) items[i].pwl = 500;
+		if (i == 7782) items[i].pwl = 1000;
+		if (items[i].pwl != 0) shop_list += "\nadd_button_with_icon|shop_price_" + to_string(i) + "|" + items[i].name + "|staticYellowFrame|" + to_string(i) + "|";
 
 		if (i == 6286 || i == 4516) items[i].box_size = 20;
 		if (i == 6288) items[i].box_size = 40;
@@ -2477,24 +2513,27 @@ int items_dat() {
 
 	for (int i = 0; i < itemCount; i++) {
 		if (items[i].blockType == BlockTypes::PLATFORM) items[i].collisionType = 0;
-		if (i == 11560 || i == 11554 || i == 11556 || i == 11558 || i == 10956 || i == 10958 || i == 10954 || i == 10952 || i == 10960) items[i].flagmay = 1929312;
-		if (i == 12014 || i == 12016 || i == 12018 || i == 12020) items[i].flagmay = 2097168;
-		if (i == 12646 || i == 12648 || i == 12650) items[i].flagmay = 8388864;
+		if (i == 11560 || i == 11554 || i == 11556 || i == 11558 || i == 13220 || i == 13196) items[i].flagmay = 1048576; //UBI WEEK TRANSFORM
+		if (i == 12646 || i == 12648 || i == 12650) items[i].flagmay = 8388608; // ASSASIN
+		if (i == 12872 || i == 12874) items[i].flagmay = 67108864; // RED PANDA
+		if (i == 11506 || i == 11508) items[i].flagmay = 524288; // MASK OF THE DRAGON
+		if (i == 12014 || i == 12016 || i == 12018 || i == 12020) items[i].flagmay = 2097168; // ALIEN
+		if (i == 10952 || i == 10954 || i == 10956 || i == 10958 || i == 10960) items[i].flagmay = 262400; // SPACE ALIEN
+		if (i == 12866 || i == 12868) items[i].flagmay = 33554432; // STREET ANIMALS
+		if (i == 10618) items[i].flagmay = 4096;
+		if (i == 9136 || i == 9138) items[i].flagmay = 64;
 		if (i == 10426) items[i].flagmay = 1929156;
 		if (i == 10412) items[i].flagmay = 1929;
-		if (items[i].clothingType == 6 and i % 2 == 0 and i != 8430 and i != 9532) {
-			rare_text += "\nadd_label_with_icon|small| " + items[i].name + "|left|" + to_string(i) + "|";
-			items[9386].randomitem.push_back(i);
+
+		if (items[i].blockType == BlockTypes::CLOTHING and i % 2 == 0 and not items[i].untradeable and i != 7782 and i != 5192 and i != 5194 and i != 9160 and i != 9520) {
+			items[9538].randomitem.push_back(i);
 		}
-		if (items[i].clothingType == 5 and i % 2 == 0) items[9384].randomitem.push_back(i);
-		if (items[i].r_1 != 0 or items[i].r_2 != 0 and items[i].rarity > 1 and i != 1790) items[9380].randomitem.push_back(i);
-		if (items[i].blockType == BlockTypes::LOCK and i != 5814 and i != 9640) {
-			rainbow_text += "\nadd_label_with_icon|small| " + items[i].name + "|left|" + to_string(i) + "|";
-			items[120].randomitem.push_back(i);
+		if (items[i].r_1 != 0 or items[i].r_2 != 0 and items[i].rarity > 1) {
+			items[9380].randomitem.push_back(i);
 		}
-		items[i].newdropchance = 36 - items[i].rarity / 8;
-		if (items[i].newdropchance <= 26)  items[i].newdropchance = 26;
-		if (items[i].farmable) items[i].newdropchance += 3;
+		items[i].newdropchance = 28 - items[i].rarity / 17;
+		if (items[i].newdropchance <= 17)  items[i].newdropchance = 17;
+		if (items[i].farmable) items[i].newdropchance += 2;
 		if (i == 5078 || i == 5084 || i == 9212 || i == 5152 || i == 5170) items[i].chance = 5;
 		if (i == 5126 || i == 5180 || i == 7174 || i == 5150 || i == 5168) items[i].chance = 6;
 		if (i == 5128 || i == 5182 || i == 7172 || i == 5148 || i == 5166) items[i].chance = 7;

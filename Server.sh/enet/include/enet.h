@@ -109,15 +109,15 @@ extern "C"
 		/** packet will not be sequenced with other packets
 		  * not supported for reliable packets
 		  */
-		  ENET_PACKET_FLAG_UNSEQUENCED = (1 << 1),
-		  /** packet will not allocate data, and user must supply it instead */
-		  ENET_PACKET_FLAG_NO_ALLOCATE = (1 << 2),
-		  /** packet will be fragmented using unreliable (instead of reliable) sends
-			* if it exceeds the MTU */
-			ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT = (1 << 3),
+		ENET_PACKET_FLAG_UNSEQUENCED = (1 << 1),
+		/** packet will not allocate data, and user must supply it instead */
+		ENET_PACKET_FLAG_NO_ALLOCATE = (1 << 2),
+		/** packet will be fragmented using unreliable (instead of reliable) sends
+		  * if it exceeds the MTU */
+		ENET_PACKET_FLAG_UNRELIABLE_FRAGMENT = (1 << 3),
 
-			/** whether the packet has been sent from all queues it has been entered into */
-			ENET_PACKET_FLAG_SENT = (1 << 8)
+		/** whether the packet has been sent from all queues it has been entered into */
+		ENET_PACKET_FLAG_SENT = (1 << 8)
 	} ENetPacketFlag;
 
 	typedef void (ENET_CALLBACK* ENetPacketFreeCallback) (struct _ENetPacket*);
@@ -411,24 +411,24 @@ extern "C"
 		/** a connection request initiated by enet_host_connect has completed.
 		  * The peer field contains the peer which successfully connected.
 		  */
-		  ENET_EVENT_TYPE_CONNECT = 1,
+		ENET_EVENT_TYPE_CONNECT = 1,
 
-		  /** a peer has disconnected.  This event is generated on a successful
-			* completion of a disconnect initiated by enet_peer_disconnect, if
-			* a peer has timed out, or if a connection request intialized by
-			* enet_host_connect has timed out.  The peer field contains the peer
-			* which disconnected. The data field contains user supplied data
-			* describing the disconnection, or 0, if none is available.
-			*/
-			ENET_EVENT_TYPE_DISCONNECT = 2,
+		/** a peer has disconnected.  This event is generated on a successful
+		  * completion of a disconnect initiated by enet_peer_disconnect, if
+		  * a peer has timed out, or if a connection request intialized by
+		  * enet_host_connect has timed out.  The peer field contains the peer
+		  * which disconnected. The data field contains user supplied data
+		  * describing the disconnection, or 0, if none is available.
+		  */
+		ENET_EVENT_TYPE_DISCONNECT = 2,
 
-			/** a packet has been received from a peer.  The peer field specifies the
-			  * peer which sent the packet.  The channelID field specifies the channel
-			  * number upon which the packet was received.  The packet field contains
-			  * the packet that was received; this packet must be destroyed with
-			  * enet_packet_destroy after use.
-			  */
-			  ENET_EVENT_TYPE_RECEIVE = 3
+		/** a packet has been received from a peer.  The peer field specifies the
+		  * peer which sent the packet.  The channelID field specifies the channel
+		  * number upon which the packet was received.  The packet field contains
+		  * the packet that was received; this packet must be destroyed with
+		  * enet_packet_destroy after use.
+		  */
+		ENET_EVENT_TYPE_RECEIVE = 3
 	} ENetEventType;
 
 	/**

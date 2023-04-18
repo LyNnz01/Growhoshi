@@ -1,7 +1,18 @@
-﻿#pragma warning(disable:4552, 4309)
+﻿#define _CRTDBG_MAP_ALLOC_
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <limits>
+#include <memory>
+#include <thread>
 #include <string>
-#include <fstream>
 #include <iostream>
+#include <exception>
+#include <filesystem>
+#include <cstdlib>
+#include <crtdbg.h>
+#include <signal.h>
+#include <fstream>
 #include <vector>
 #include "enet/include/enet.h"
 #include <nlohmann/json.hpp>
@@ -9,24 +20,21 @@
 #include "Base.h"
 #include "Player.h"
 #include "Packet.h"
+#include "GameUpdatePacket.h"
+#include "Dialog.h"
+#include "Algorithm.h"
 #include "Guilds.h"
 #include "World.h"
-#include "Webhook.h"
 #include "SaveSystem.h"
 #pragma comment(lib, "Ws2_32.lib")
 BOOL WINAPI HandlerRoutine(DWORD dwCtrlType) {
 	save_all();
 	return FALSE;
 }
-void doLog(string txt) {
-	ofstream a("case4logs.txt", ios::app);
-	a << txt + "\n";
-	a.close();
-}
-void doLog2(string txt) {
-	ofstream a2("case2logs.txt", ios::app);
-	a2 << txt + "\n";
-	a2.close();
+void sendItemDataToPeer(ENetPeer* peer)
+{
+	ENetPacket* pkt = enet_packet_create(item_data, static_cast<size_t>(item_data_size) + 60, ENET_PACKET_FLAG_RELIABLE);
+	enet_peer_send(peer, 0, pkt);
 }
 vector<string> split_string_by_newline(const string& str)
 {
@@ -53,9 +61,259 @@ BOOL WINAPI ConsoleHandler(DWORD dwType)
 	}
 	return FALSE;
 }
-long long last_time = 0, last_guild_save = time(NULL) + 60, last_time_ = 0, last_time2_ = 0, last_hm_time = 0;// , last_growganoth_time = 0;
+long long lastUpdateData = 0, last_time = 0, last_guild_save = time(NULL) + 60, last_time_ = 0, last_time2_ = 0, last_hm_time = 0, last_growganoth_time = 0, autofarm_delay = 0, autospam_delay = 0, last_checkip = 0;
+void loop_cheat() {
+	long long ms_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	try {
+		if (autofarm_delay - ms_time <= 0) {
+			autofarm_delay = ms_time + 300;
+			for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+				if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world.empty() or pInfo(currentPeer)->tankIDName.empty()) continue;
+				if (not has_playmod(pInfo(currentPeer), "Cheat Active: Auto Farm") and pInfo(currentPeer)->Cheat_AF_isRunning) continue;
+				bool isRemote = pInfo(currentPeer)->isRemote;
+				// Auto Farm
+				string name_ = pInfo(currentPeer)->world;
+				vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+				if (p != worlds.end()) {
+					World* world_ = &worlds[p - worlds.begin()];
+					if (pInfo(currentPeer)->Cheat_AF_PlantingTree != 0 and pInfo(currentPeer)->Cheat_AF_isRunning) {
+						string name_ = pInfo(currentPeer)->world;
+						vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+						if (p != worlds.end()) {
+							World* world_ = &worlds[p - worlds.begin()];
+							WorldBlock* block_ = &world_->blocks[pInfo(currentPeer)->Cheat_AF_PunchX + (pInfo(currentPeer)->Cheat_AF_PunchY * 100)];
+							if (block_->fg == 0 and block_->bg == 0) {
+								if (items[pInfo(currentPeer)->Cheat_AF_PlantingTree].blockType == BlockTypes::CLOTHING) {
+									pInfo(currentPeer)->Cheat_AF_PlantingTree = 0;
+									break;
+								}
+								int adaBrp = 0;
+								modify_inventory(currentPeer, pInfo(currentPeer)->Cheat_AF_PlantingTree, adaBrp);
+								if (adaBrp == 0) break;
+								if (!isRemote and has_playmod(pInfo(currentPeer), "rayman's fist") and adaBrp < 3) break;
+								if (!isRemote and pInfo(currentPeer)->hand == 5196 or pInfo(currentPeer)->hand == 7962 and adaBrp < 5) break;
+								if (!isRemote and pInfo(currentPeer)->hand == 9156 and adaBrp < 4) break;
+								if (!isRemote and pInfo(currentPeer)->hand == 9158 and adaBrp < 7) break;
+								if (!isRemote and pInfo(currentPeer)->hand == 8430 and adaBrp < 10) break;
+								if (has_playmod(pInfo(currentPeer), "rayman's fist")) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+								if (pInfo(currentPeer)->hand == 5196 or pInfo(currentPeer)->hand == 7962) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 9156) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 9158) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 5, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 6, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 5, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 6, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 8430) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 5, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 6, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 7, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 8, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 9, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 5, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 6, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 7, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 8, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 9, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+								else {
+									if (!isRemote and adaBrp < 2) break;
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+									else {
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+										autoPlace_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY, pInfo(currentPeer)->Cheat_AF_PlantingTree);
+									}
+								}
+							}
+							else {
+								if (has_playmod(pInfo(currentPeer), "rayman's fist")) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+								if (pInfo(currentPeer)->hand == 5196 or pInfo(currentPeer)->hand == 7962) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 9156) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 9158) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 5, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 6, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 5, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 6, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+								else if (pInfo(currentPeer)->hand == 8430) {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 5, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 6, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 7, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 8, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 9, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 2, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 3, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 4, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 5, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 6, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 7, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 8, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 9, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+								else {
+									if (pInfo(currentPeer)->isFacingLeft) {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX - 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+									else {
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX, pInfo(currentPeer)->Cheat_AF_PunchY);
+										autoPunch_tile(currentPeer, pInfo(currentPeer)->Cheat_AF_PunchX + 1, pInfo(currentPeer)->Cheat_AF_PunchY);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	catch (out_of_range& sui) {
+		hoshi_warn(sui.what());
+	}
+}
 void loop_worlds() {
 	long long ms_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	if (lastUpdateData - ms_time <= 0) {
+		serverTimeOn = serverTimeOn + 10;
+		ofstream write_new_timeon("uptime.txt");
+		write_new_timeon << (uptimeText(serverTimeOn));
+		write_new_timeon.close();
+		lastUpdateData = ms_time + 10000;
+	}
 	if (last_hm_time - ms_time <= 0) {
 		last_hm_time = ms_time + 60000;
 		for (int i = 0; i < monitors.size(); i++) {
@@ -99,7 +357,7 @@ void loop_worlds() {
 		p.Insert("OnConsoleMessage"), p.Insert("`4Global System Message``: Restarting server for update in `4" + to_string(restart_server_time) + "`` minutes");
 		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-			packet_(currentPeer, "action|play_sfx\nfile|audio/ogg/suspended.ogg\ndelayMS|700");
+			if (restart_server_time == 1) packet_(currentPeer, "action|play_sfx\nfile|audio/ogg/suspended.ogg\ndelayMS|700");
 			p.CreatePacket(currentPeer);
 		}
 		restart_server_time -= 1;
@@ -121,11 +379,77 @@ void loop_worlds() {
 			restart_server_status_seconds = false;
 			for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 				if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-				only_role = true;
-				enet_peer_disconnect_later(currentPeer, 0);
+				if (not pInfo(currentPeer)->tankIDName.empty()) {
+					save_player(pInfo(currentPeer), false);
+				}
+				if (pInfo(currentPeer)->trading_with != -1) {
+					cancel_trade(currentPeer, false);
+				}
 			}
+			down_save();
 		}
 		restart_server_time -= 10;
+	}
+	if (last_growganoth_time - ms_time <= 0 && Halloween) {
+		last_growganoth_time = ms_time + 10000;
+		try {
+			string name_ = "GROWGANOTH";
+			vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+			if (p != worlds.end()) {
+				World* world_ = &worlds[p - worlds.begin()];
+				if (world_->name == "GROWGANOTH" && world_->weather == 9) {
+					for (int i_ = 0; i_ < 6000; i_++) {
+						int x = i_ % 100, y = i_ / 100;
+						WorldBlock* block_ = &world_->blocks.at(x + (y * 100));
+						if (rand() % 2 + 1 == 1 and world_->blocks[i_].fg == 1222) {
+							if (x != 47 and x != 48 and x != 49 and x != 50 and x != 51 and x != 52) {
+								world_->blocks[i_].fg = 1224;
+								PlayerMoving data_{};
+								data_.packetType = 5, data_.punchX = x, data_.punchY = y, data_.characterState = 0x8;
+								BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_)); BYTE* blc = raw + 56;
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+									if (pInfo(currentPeer)->world == world_->name) {
+										form_visual(blc, *block_, *world_, currentPeer, false); send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_), ENET_PACKET_FLAG_RELIABLE);
+									}
+								}
+								delete[] raw, blc;
+							}
+						}
+						if (rand() % 2 + 1 == 1 and world_->blocks[i_].fg == 1224) {
+							world_->blocks[i_].fg = 1222;
+							PlayerMoving data_{};
+							data_.packetType = 5, data_.punchX = x, data_.punchY = y, data_.characterState = 0x8;
+							BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_)); BYTE* blc = raw + 56;
+							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+								if (pInfo(currentPeer)->world == world_->name) {
+									form_visual(blc, *block_, *world_, currentPeer, false); send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_), ENET_PACKET_FLAG_RELIABLE);
+								}
+							}
+							delete[] raw, blc;
+						}
+						if (rand() % 2 + 1 == 1 and world_->blocks[i_].fg == 1226) {
+							if (world_->blocks[i_].flags ^ 0x00400000) world_->blocks[i_].flags = world_->blocks[i_].flags | 0x00400000;
+							else world_->blocks[i_].flags = world_->blocks[i_].flags ^ 0x00400000;
+							PlayerMoving data_{};
+							data_.packetType = 5, data_.punchX = x, data_.punchY = y, data_.characterState = 0x8;
+							BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_)); BYTE* blc = raw + 56;
+							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+								if (pInfo(currentPeer)->world == world_->name) {
+									form_visual(blc, *block_, *world_, currentPeer, false); send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_), ENET_PACKET_FLAG_RELIABLE);
+								}
+							}
+							delete[] raw, blc;
+						}
+					}
+				}
+			}
+		}
+		catch (...) {
+			return;
+		}
 	}
 	if (last_time - ms_time <= 0) {
 		last_time = ms_time + 1000;
@@ -148,44 +472,41 @@ void loop_worlds() {
 				if (pInfo(currentPeer)->save_time != 0) {
 					pInfo(currentPeer)->opc++;
 					if (pInfo(currentPeer)->gp) pInfo(currentPeer)->opc++;
+					string extra = "";
+					if (pInfo(currentPeer)->hand == 9520 || pInfo(currentPeer)->hand == 8430) pInfo(currentPeer)->opc++, extra = "`9+1 [" + items[pInfo(currentPeer)->hand].ori_name + "]``, ";
+					add_honors(pInfo(currentPeer)->world);
+					gamepacket_t p2;
+					p2.Insert("OnConsoleMessage"), p2.Insert(a + "You earned 1" + (pInfo(currentPeer)->gp ? "`2+1``" : "") + extra + " Online Star staying active in the game!"), p2.CreatePacket(currentPeer);
+					loop_save(currentPeer);
 				}
 				pInfo(currentPeer)->save_time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
 			}
-			/*
 			string name_ = pInfo(currentPeer)->world;
 			vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
 			if (p != worlds.end()) {
 				World* world_ = &worlds[p - worlds.begin()];
-				/*
-				if (last_growganoth_time - ms_time <= 0 && world_->name == "GROWGANOTH") {
-					last_growganoth_time = ms_time + 15000;
-					for (int i_ = 0; i_ < growganoth_platform.size(); i_++) update_tile(currentPeer, growganoth_platform[i_] % 100, growganoth_platform[i_] / 100, 0, false, false);
-					growganoth_platform.clear();
-					for (int i_ = 0; i_ < 50; i_++) update_tile(currentPeer, rand() % 60 + 20, rand() % 32 + 20, (i_ < 40 ? 1222 : 7048), true, false);
-				}*/
-				/*
-					if (world_->special_event && world_->last_special_event + 30000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
-						gamepacket_t p, p2;
-						p.Insert("OnAddNotification"), p.Insert("interface/large/special_event.rttex"), p.Insert("`2" + items[world_->special_event_item].event_name + ":`` " + (items[world_->special_event_item].event_total == 1 ? "`oTime's up! Nobody found it!``" : "`oTime's up! " + to_string(world_->special_event_item_taken) + " of " + to_string(items[world_->special_event_item].event_total) + " items found.``") + ""), p.Insert("audio/cumbia_horns.wav"), p.Insert(0);
-						p2.Insert("OnConsoleMessage"), p2.Insert("`2" + items[world_->special_event_item].event_name + ":`` " + (items[world_->special_event_item].event_total == 1 ? "`oTime's up! Nobody found it!``" : "`oTime's up! " + to_string(world_->special_event_item_taken) + " of " + to_string(items[world_->special_event_item].event_total) + " items found.``") + "");
-						for (ENetPeer* currentPeer_event = server->peers; currentPeer_event < &server->peers[server->peerCount]; ++currentPeer_event) {
-							if (currentPeer_event->state != ENET_PEER_STATE_CONNECTED or currentPeer_event->data == NULL or pInfo(currentPeer_event)->world != name_) continue;
-							p.CreatePacket(currentPeer_event), p2.CreatePacket(currentPeer_event);
-							PlayerMoving data_{};
-							data_.effect_flags_check = 1, data_.packetType = 14, data_.netID = 0;
-							for (int i_ = 0; i_ < world_->drop.size(); i_++) {
-								if (world_->drop[i_].special == true) {
-									data_.plantingTree = world_->drop[i_].uid;
-									BYTE* raw = packPlayerMoving(&data_);
-									send_raw(currentPeer_event, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-									delete[]raw;
-									world_->drop[i_].id = 0, world_->drop[i_].x = -1, world_->drop[i_].y = -1;
-								}
+				if (world_->special_event && world_->last_special_event + 30000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+					gamepacket_t p, p2;
+					p.Insert("OnAddNotification"), p.Insert("interface/large/special_event.rttex"), p.Insert("`2" + items[world_->special_event_item].event_name + ":`` " + (items[world_->special_event_item].event_total == 1 ? "`oTime's up! Nobody found it!``" : "`oTime's up! " + to_string(world_->special_event_item_taken) + " of " + to_string(items[world_->special_event_item].event_total) + " items found.``") + ""), p.Insert("audio/cumbia_horns.wav"), p.Insert(0);
+					p2.Insert("OnConsoleMessage"), p2.Insert("`2" + items[world_->special_event_item].event_name + ":`` " + (items[world_->special_event_item].event_total == 1 ? "`oTime's up! Nobody found it!``" : "`oTime's up! " + to_string(world_->special_event_item_taken) + " of " + to_string(items[world_->special_event_item].event_total) + " items found.``") + "");
+					for (ENetPeer* currentPeer_event = server->peers; currentPeer_event < &server->peers[server->peerCount]; ++currentPeer_event) {
+						if (currentPeer_event->state != ENET_PEER_STATE_CONNECTED or currentPeer_event->data == NULL or pInfo(currentPeer_event)->world != name_) continue;
+						p.CreatePacket(currentPeer_event), p2.CreatePacket(currentPeer_event);
+						PlayerMoving data_{};
+						data_.effect_flags_check = 1, data_.packetType = 14, data_.netID = 0;
+						for (int i_ = 0; i_ < world_->drop.size(); i_++) {
+							if (world_->drop[i_].special == true) {
+								data_.plantingTree = world_->drop[i_].uid;
+								BYTE* raw = packPlayerMoving(&data_);
+								send_raw(currentPeer_event, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+								delete[]raw;
+								world_->drop[i_].id = 0, world_->drop[i_].x = -1, world_->drop[i_].y = -1;
 							}
 						}
-						world_->last_special_event = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count(), world_->special_event_item = 0, world_->special_event_item_taken = 0, world_->special_event = false;
 					}
-				}*/
+					world_->last_special_event = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count(), world_->special_event_item = 0, world_->special_event_item_taken = 0, world_->special_event = false;
+				}
+			}
 			if (pInfo(currentPeer)->hand == 3578 && pInfo(currentPeer)->hand_torch + 60000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 				if (pInfo(currentPeer)->hand_torch != 0) {
 					int got = 0;
@@ -197,6 +518,13 @@ void loop_worlds() {
 					modify_inventory(currentPeer, 3578, got = -1);
 				}
 				pInfo(currentPeer)->hand_torch = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+			}
+			if (pInfo(currentPeer)->rb == 1 && pInfo(currentPeer)->name_time + 250 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+				pInfo(currentPeer)->name_time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+				string msg2 = pInfo(currentPeer)->name_color;
+				if (pInfo(currentPeer)->is_legend) msg2 = "`" + to_string(rand() % 9 + 1) + pInfo(currentPeer)->tankIDName;
+				else for (int i = 0; i < pInfo(currentPeer)->tankIDName.length(); i++) msg2 += "`" + to_string(rand() % 9 + 1) + "" + pInfo(currentPeer)->tankIDName[i];
+				ChangeName(currentPeer, msg2);
 			}
 			if (pInfo(currentPeer)->hand == 2204 and pInfo(currentPeer)->x != -1 and pInfo(currentPeer)->y != -1) {
 				if (not has_playmod(pInfo(currentPeer), "Irradiated")) {
@@ -265,10 +593,11 @@ void loop_worlds() {
 									int chanced = 0;
 									if (thedaytoday == 3) chanced = 3;
 									add_role_xp(currentPeer, 1, "geiger");
+									add_role_xp(currentPeer, rand() % 282, "kit");
 									// GEIGER QUEST
 									vector<int> geiger_items = { 6416,3196,2206,1500,1498,2806,2804,8270,8272,8274,2244,2246,2242,3792,3306,4676,4678,4680,4682,4652,4650,4648,4646,11186,10086 };
 									vector<int> rare_cr = { 2248,2250,3792,10084 };
-									vector<int> rarest = { 4654 , 9380 , 11562, 1486 };
+									vector<int> rarest = { 4654 , 6848 , 11562, 1486 };
 									int item_ = geiger_items[rand() % geiger_items.size()];
 									if (rand() % 50 < 10 + chanced) item_ = rare_cr[rand() % rare_cr.size()];
 									if (rand() % 50 < 2 + chanced) item_ = rarest[rand() % rarest.size()];
@@ -339,6 +668,24 @@ void loop_worlds() {
 				}
 			}
 			long long time_ = time(nullptr);
+			try {
+				string name_ = pInfo(currentPeer)->world;
+				vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+				if (p != worlds.end()) {
+					World* world_ = &worlds[p - worlds.begin()];
+					if (pInfo(currentPeer)->World_Timed - time_ == 60 && pInfo(currentPeer)->WorldTimed && pInfo(currentPeer)->tankIDName != world_->owner_name) {
+						gamepacket_t p;
+						p.Insert("OnTalkBubble"); p.Insert(pInfo(currentPeer)->netID); p.Insert("Your access to this world will expire in less than a minute!"); p.Insert(0); p.Insert(0); p.CreatePacket(currentPeer);
+					}
+					if (pInfo(currentPeer)->World_Timed - time_ < 0 && pInfo(currentPeer)->WorldTimed && pInfo(currentPeer)->tankIDName != world_->owner_name) {
+						exit_(currentPeer);
+					}
+				}
+			}
+			catch (out_of_range) {
+				cout << "Server error invalid (out of range) on remove access" << endl;
+				return;
+			}
 			for (int i_ = 0; i_ < pInfo(currentPeer)->playmods.size(); i_++) {
 				if (pInfo(currentPeer)->playmods[i_].id == 12) {
 					if (pInfo(currentPeer)->valentine_time + 2500 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
@@ -398,28 +745,37 @@ void loop_worlds() {
 		}
 	}
 }
-bool isASCII(const std::string& s)
+bool isASCII(const string& s)
 {
-	return !std::any_of(s.begin(), s.end(), [](char c) {
+	return !any_of(s.begin(), s.end(), [](char c) {
 		return static_cast<unsigned char>(c) > 127;
 		});
 }
-inline void Loopos() {
+inline void SaveSystem() {
 	while (true) {
-		Sleep(500);
-		loop_worlds();
+		this_thread::sleep_for(milliseconds(60000));
+		Server_Saving(), Server_Reset();
 	}
 }
+
 int main(int argc, char* argv[]) {
-	BOOL ret = SetConsoleCtrlHandler(ConsoleHandler, TRUE);
-	system("COLOR 9");
-	system("TITLE Growhoshi Server");
-	hoshi_info("Please wait while we setuping the server");
+	// init local-time
+	struct tm newtime;
+	time_t now = time(0);
+	localtime_s(&newtime, &now);
+	today_day = newtime.tm_mday;
+	//
+	system("COLOR B");
+	system("TITLE Hoshi Server");
+	hoshi_info("Setting up server...");
+	//
 	if (atexit(save_all)) {
-		hoshi_db_logs("Saving all Database!");
+		hoshi_db_logs("Saving all data...");
 	}
 	srand(unsigned int(time(nullptr)));
-	hoshi_db_logs("Loading saved guild data");
+	signal(SIGINT, save_w), signal(SIGABRT, save_w);
+	SetConsoleCtrlHandler(HandlerRoutine, true);
+	hoshi_db_logs("Serializing guild & server data...");
 	for (const auto& entry : fs::directory_iterator("database/guilds")) {
 		if (!fs::is_directory(entry.path())) {
 			string guild_id = explode(".", entry.path().filename().string())[0];
@@ -459,51 +815,50 @@ int main(int argc, char* argv[]) {
 			guilds.push_back(new_guild);
 		}
 	}
-	if (items_dat() == -1)
-		hoshi_warn("items.dat error maybe missing or moved");
-	else {
-		hoshi_info(setGems(items.size()) + " items loaded");
-		//cout << setGems(items.size()) << " items loaded" << endl;
-	}
-	server_port = 28028;
-	if (init_enet(server_port) == -1)
-		hoshi_warn("ENet error or port 28028 already used");
-	else
-		system("CLS");
-	cout << "===== Growhoshi Growtopia Private Server =====" << endl;
-	cout << "" << endl;
-	cout << "Server written in C++ and developed by Ritshu" << endl;
-	time_t timeNow = time(0);
-	char* dt = ctime(&timeNow);
-	cout << "Server Running: " << dt << endl;
-	hoshi_info("ENet Service started on port: " + to_string(server_port));
-	hoshi_info("Items data loaded containing : " + setGems(items.size()) + " items");
-	hoshi_db_logs("All data successfully loaded.");
-	thread runautosave(autosave);
-	if (runautosave.joinable()) {
-		runautosave.detach();
-	}
-	thread a__(Server_Saving);
-	thread b__(Server_Reset);
-	thread c__(Loopos);
-	a__.detach();
-	b__.detach();
-	c__.detach();
-	signal(SIGSEGV, save_w);
-	signal(SIGABRT, save_w);
-	daily_quest();
-	honors_reset();
-
 	ifstream ifs("news.json");
 	if (ifs.is_open()) {
 		json j;
 		ifs >> j;
 		news_text = j["news"].get<string>();
 	}
-	// }
-	struct tm newtime;
-	time_t now = time(0);
-	localtime_s(&newtime, &now);
+	{
+		ifstream ifs("database/server_events.json");
+		if (ifs.is_open()) {
+			json j;
+			ifs >> j;
+			top_points = (!(j.find("h" + to_string(today_day)) != j.end()) ? top_points : j["h" + to_string(today_day)].get<vector<pair<int, string>>>());
+			top_yesterday = (!(j.find("h" + to_string(today_day - 1)) != j.end()) ? top_yesterday : j["h" + to_string(today_day - 1)].get<vector<pair<int, string>>>());
+			top_overall = (!(j.find("m" + to_string(today_month)) != j.end()) ? top_overall : j["m" + to_string(today_month)].get<vector<pair<int, string>>>());
+		}
+	}
+	{
+		time_t currentTime;
+		time(&currentTime);
+		const auto localTime = localtime(&currentTime);
+		const auto Hour = localTime->tm_hour; const auto Min = localTime->tm_min; const auto Sec = localTime->tm_sec; const auto Year = localTime->tm_year + 1900; const auto Day = localTime->tm_mday; const auto Month = localTime->tm_mon + 1;
+		if (Hour >= 6 and Hour < 15) {
+			DaylightDragon.param1 = 0, DaylightDragon.param2 = 0, DaylightDragon.param3 = 1, DaylightDragon.param4 = 5, DaylightDragon.param5 = 0, DaylightDragon.param6 = 2;
+		}
+		if (Hour >= 15 and Hour < 18) {
+			DaylightDragon.param1 = 1, DaylightDragon.param2 = 0, DaylightDragon.param3 = 1, DaylightDragon.param4 = 5, DaylightDragon.param5 = 0, DaylightDragon.param6 = 0;
+		}
+		if (Hour >= 18 and Hour <= 0 or Hour > 0 and Hour < 6) {
+			DaylightDragon.param1 = 2, DaylightDragon.param2 = 0, DaylightDragon.param3 = 1, DaylightDragon.param4 = 5, DaylightDragon.param5 = 0, DaylightDragon.param6 = 1;
+		}
+		ifstream ifs("database/server_statistic.json");
+		if (ifs.is_open()) {
+			json j;
+			ifs >> j;
+			GlobalStats.totalUserIDGenerated = j["totalUserIDGenerated"].get<uint64_t>();
+			GlobalStats.totalGuildIDGenerated = j["totalGuildIDGenerated"].get<uint64_t>();
+			GlobalStats.totalModeratorBought = j["totalModeratorBought"].get<uint64_t>();
+		}
+	}
+	if (items_dat() == -1)
+		hoshi_warn("Failed build item data.");
+	else {
+		hoshi_info(setGems(items.size()) + " items built");
+	}
 	thedaytoday = newtime.tm_wday;
 	{
 		const char* months[12] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
@@ -512,8 +867,8 @@ int main(int argc, char* argv[]) {
 		else if (str == "02" || str == "22") translated = "nd";
 		else if (str == "03") translated = "rd";
 		else translated = "th";
-		if (thedaytoday == 0) locke = "\nadd_spacer|small|\nadd_textbox|`oToday Growhoshi is being paid a visit by `5Locke`` the traveling salesman! He comes one day a week to hawk his fabulous wares, though this time he'll stick around a day and a half to introduce himself. Checkout the world `5LOCKE``!``|left|";
-		news_texture = "set_default_color|`o\nadd_label_with_icon|big|`wThe Growhoshi Gazette``|left|5016|\nadd_spacer|small|\nadd_image_button||interface/large/hoshi_banner.rttex|bannerlayout|||\nadd_spacer|small|\nadd_textbox|`w" + month + " " + to_string(today_day) + "" + translated + ": `1Server Release``: x5 Gems from breaking blocks/harvest trees.``|left|\nadd_spacer|small|\nadd_image_button|iotm_layout|interface/large/gazette/gazette_3columns_feature_btn04.rttex|3imageslayout|||\nadd_image_button|iotm_layout|interface/large/gazette/gazette_3columns_feature_btn03.rttex|3imageslayout|||\nadd_image_button|iotm_layout|interface/large/gazette/gazette_3columns_feature_btn10.rttex|3imageslayout|||" + locke + news_text + "\nadd_quick_exit|";
+		//locke = "\nadd_spacer|small|\nadd_textbox|`oToday HeroPS is being paid a visit by `5Locke`` the traveling salesman! He comes one day a week to hawk his fabulous wares, though this time he'll stick around a day and a half to introduce himself. Checkout the world `5LOCKE``!``|left|" UPDATE NEWS;
+		news_texture = "set_default_color|`o\nadd_label_with_icon|big|`wThe Hero-PS Gazette``|left|5016|\nadd_spacer|small|\nadd_image_button||interface/large/news_banner.rttex|bannerlayout|||\nadd_spacer|small|\nadd_textbox|`w" + month + " " + to_string(today_day) + "" + translated + "``|left|\nadd_spacer|small|" + locke + news_text + "\nadd_quick_exit|";
 	}
 	if (thedaytoday == 1) theitemtoday = 5040;
 	else if (thedaytoday == 2) theitemtoday = 5042;
@@ -522,46 +877,69 @@ int main(int argc, char* argv[]) {
 	else if (thedaytoday == 5)theitemtoday = 5034;
 	else if (thedaytoday == 6) theitemtoday = 5036;
 	else if (thedaytoday == 0)theitemtoday = 5038;
+	if (init_enet(SERVER_PORT) == -1) hoshi_warn("failed to bind ENet.");
+	else system("CLS");
+	//
+	time_t timeNow = time(0);
+	char* dt = ctime(&timeNow);
+	cout << "Started servet at: " << dt;
+	daily_quest(), daily_ancient_riddle();
+	thread sui(SaveSystem);
+	sui.detach();
+	//
 	ENetEvent event;
 	while (true) {
-		while (enet_host_service(server, &event, 1000) > 0 && f_saving_ == false) {
-			if (saving_ or f_saving_) continue;
+		while (enet_host_service(server, &event, 100) > 0) {
 			ENetPeer* peer = event.peer;
 			switch (event.type) {
-			case ENET_EVENT_TYPE_CONNECT:
-			{
-				bool quit = false;
-				char clientConnection[16];
-				enet_address_get_host_ip(&peer->address, clientConnection, 16);
-				if (quit) break;
+			case ENET_EVENT_TYPE_CONNECT: {
 				send_(peer, 1, nullptr, 0);
 				peer->data = new Player;
-				pInfo(peer)->id = peer->connectID;
-				pInfo(peer)->ip = clientConnection;
-				string error = "";
-				int logged = 0;
-				for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-					if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(peer)->ip != pInfo(currentPeer)->ip) continue;
-					logged++;
-				}
-				if (logged == 200) error = "`4OOPS:`` Sorry the server is currently overloaded with `4200 ``Player online, we are currently working for this issue.";
-				if (logged > 4) error = "`4OOPS:`` Too many people logging in at once. Please press `5CANCEL`` and try again in a few seconds.";
-				for (int i = 0; i < ipbans.size(); i++) if (pInfo(peer)->ip == ipbans[i]) error = "action|log\nmsg|CT:[S]_ `4Sorry, you are not allowed to enter the game from this location. Contact `5Discord Staff Team `4if you have any questions.";
-				if (pInfo(peer)->ip != pInfo(peer)->meta and pInfo(peer)->meta != "") error = "action|log\nmsg|CT:[S]_ `4Can not make new account!`` Sorry, but IP " + pInfo(peer)->ip + " is not permitted to create NEW Growtopia accounts at this time. (This can be because there is an open proxy/VPN here or abuse has from this IP) Please try again from another IP address.";
-				//if (pInfo(peer)->gameVersion != "3.93") error = "action|log\nmsg|CT:[S]_ `5Update Required: `oNow version Growtopia is 3.93, Please update your growtopia.";
+				char connection[16];
+				enet_address_get_host_ip(&peer->address, connection, 16);
+				pInfo(peer)->id = peer->connectID, pInfo(peer)->ip = string(connection);
+				string error;
+				for (int i = 0; i < ipbans.size(); i++) if (pInfo(peer)->ip == ipbans[i]) error = "action|log\nmsg|CT:[S]_ `4Sorry, you are not allowed to enter the game from this device or location. Contact `1Growhoshi `5Discord Staff Team `4if you have any questions.";
+				for (int i = 0; i < ridbans.size(); i++) if (pInfo(peer)->rid == ridbans[i]) error = "action|log\nmsg|CT:[S]_ `4Sorry, you are not allowed to enter the game from this device or location. Contact `1Growhoshi `5Discord Staff Team `4if you have any questions.";
+				if (pInfo(peer)->ip != pInfo(peer)->meta and pInfo(peer)->meta != "") error = "action|log\nmsg|CT:[S]_ `4Can not make new account!`` Sorry, but IP " + pInfo(peer)->ip + " is not permitted to create NEW Growhoshi accounts at this time. (This can be because there is an open proxy/VPN here or abuse has from this IP) Please try again from another IP address.";
 				if (error != "") packet_(peer, error, ""), enet_peer_disconnect_later(peer, 0);
-
 				break;
 			}
-			case ENET_EVENT_TYPE_RECEIVE: // TODO DETECT CLIENT SENDING PACKET
-			{
-				loop_worlds();
+			case ENET_EVENT_TYPE_DISCONNECT: {
+				if (!event.peer) break;
+				if (event.peer->data == nullptr) break;
+				if (pInfo(peer) != NULL) {
+					//Algorithm::RemovePeerAFDuration(peer);
+					if (pInfo(peer)->trading_with != -1) cancel_trade(peer, false);
+					if (not pInfo(peer)->world.empty() or pInfo(peer)->world != "EXIT") exit_(peer, true);
+					save_player(pInfo(peer), true);
+					delete event.peer->data;
+					event.peer->data = NULL;
+				}
+				break;
+			}
+			case ENET_EVENT_TYPE_RECEIVE: {
+				if (!event.peer) {
+					string pkt = format("{} has no peer.", event.packet->data[0]);
+					hoshi_pktdebug(pkt);
+					break;
+				}
+				if (event.peer->data == nullptr) {
+					string pkt = format("{} doesn't have peer data.", event.packet->data[0]);
+					hoshi_pktdebug(pkt);
+					break;
+				}
+				if (event.packet->dataLength < 0x4 || event.packet->dataLength > 0x400) break;
+				//uint32_t type = static_cast<uint32_t>(event.packet->data[0]);
+				if (!pInfo(peer)) break;
 				switch (message_(event.packet)) {
 				case 2:
 				{
 					string cch = text_(event.packet);
 					theCCH = cch;
 					int lpse = 10;
+					if (cch.size() < 5) break;
+					if (cch.size() > 1024 || not isASCII(cch)) break;
 					if (cch.size() < 8) {
 						if (pInfo(peer)->tankIDName != "") {
 							add_ban(peer, 6.307e+7, "Usage of Third Party Program", "System");
@@ -572,52 +950,56 @@ int main(int argc, char* argv[]) {
 							p1.Insert("CT:[FC]_>> `^>> Server-Operator: `w" + pInfo(peer)->tankIDName + "`` has been BANNED for `w730 days``.");
 							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-								if (pInfo(currentPeer)->dev || pInfo(currentPeer)->superdev) {
+								if (pInfo(currentPeer)->dev || pInfo(currentPeer)->mod) {
 									p.CreatePacket(currentPeer);
 									p1.CreatePacket(currentPeer);
 								}
 							}
 						}
 					}
-					if (cch == "action|getDRAnimations\n") break;
-					if (pInfo(peer)->lpps + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+					if (cch == "action|getDRAnimations\n" || cch == "action|refresh_player_tribute_data\n") break;
+					if (pInfo(peer)->isIn == false) {
+						if (cch == "action|enter_game\n" || cch.find("requestedName|") != string::npos || cch.find("tankIDName|") != string::npos || cch.find("action|dialog_return\ndialog_name|puzzle_captcha_submit\n") != string::npos || cch == "action|getDRAnimations\n" || cch == "action|refresh_player_tribute_data\n" || cch.find("action|dialog_return\ndialog_name|2fa\nverificationcode|") != string::npos) {
+						}
+						else {
+							add_ipban(peer);
+							send_server_logs(pInfo(peer)->tankIDName, "Shadow `4Banned ``by System (FLAGGED AS: PACKET_BYPASS)");
+							banned_ip_temporary.push_back(make_pair(pInfo(peer)->ip, (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()));
+							enet_peer_disconnect_later(peer, 0);
+						}
+					}
+					if (pInfo(peer)->world != "") {
+						if (pInfo(peer)->x / 32 == -1 || pInfo(peer)->y / 32 == -1) break;
+					}
+					if (pInfo(peer)->lpps + 100 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 						pInfo(peer)->pps = 0;
 						pInfo(peer)->lpps = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
 					}
 					else {
+						if (cch.find("action|wrench\n|netid|") != string::npos) break;
 						pInfo(peer)->pps++;
-						if (pInfo(peer)->pps >= lpse) {
-							hoshi_warn("Detected Packet (2) Spam by " + pInfo(peer)->tankIDName);
-							packet_(peer, "action|log\nmsg|`7Your client sending too many packets, atempt to reconnect.");
+						if (pInfo(peer)->pps >= 15) {
+							send_server_logs(pInfo(peer)->tankIDName, "`4AUTO-BANNED ``by System Abnormal amount of packets sent within 100 milliseconds");
+							add_ban(peer, 2592000, "Usage of 3rd Party Program", "System");
+							add_ridban(peer), add_ipban(peer);
+							if (not pInfo(peer)->tankIDName.empty()) {
+								save_player(pInfo(peer), false);
+							}
+							if (pInfo(peer)->trading_with != -1) {
+								cancel_trade(peer, false);
+							}
+							if (pInfo(peer)->world != "") exit_(peer, true);
 							enet_peer_disconnect_later(peer, 0);
 							break;
 						}
-					}
-					//doLog2(cch);
-					if (cch.size() < 5) break;
-					if (cch.size() > 1024 || not isASCII(cch)) break;
-					//cout << cch << endl;
-					if (pInfo(peer)->last_open_packet + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
-						pInfo(peer)->packet_to_much = 0;
-						pInfo(peer)->last_open_packet = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
-					}
-					else {
-						pInfo(peer)->packet_to_much++;
-						if (pInfo(peer)->packet_to_much >= 30) {
-							add_modlogs(peer, pInfo(peer)->name_color + pInfo(peer)->tankIDName, "`6 [" + pInfo(peer)->ip + " BANNED BY SYSTEM (PACKET BYPASS/SPAM) +" + text_(event.packet), "");
-							hoshi_info(pInfo(peer)->tankIDName + " Auto Banned for bypassing / spamming packets ");
-							add_ban(peer, 6.307e+7, "Spaming packet (maybe dupe/crash)!", "System");
-							enet_peer_disconnect_later(peer, 0);
-							break;
-						}
-					}
-
-					if (pInfo(peer)->world != "") {
-						if (pInfo(peer)->x / 32 == -1 || pInfo(peer)->y / 32 == -1) break;
 					}
 					if (pInfo(peer)->requestedName.empty()) {
 						if (pInfo(peer)->enter_game != 0 || pInfo(peer)->world != "") enet_peer_disconnect_later(peer, 0);
-						else player_login(peer, cch);
+						else {
+							if (!player_login(peer, cch)) {
+								break;
+							}
+						}
 					}
 					else if (cch.find("action|validate_world") != string::npos) {
 						vector<string> t_ = explode("|", cch);
@@ -627,11 +1009,6 @@ int main(int argc, char* argv[]) {
 						if (fs::is_directory("database/worlds/" + Name + "_.json")) Available = 1;
 						packet_(peer, "action|world_validated\navailable|" + to_string(Available) + "\nworld_name|" + Name + "\n");
 						break;
-					}
-					if (!pInfo(peer)->isIn) {
-						if (!player_login(peer, cch)) {
-							break;
-						}
 					}
 					else if (cch.find("action|input") != string::npos) {
 						vector<string> t_ = explode("|", cch);
@@ -683,7 +1060,7 @@ int main(int argc, char* argv[]) {
 								replaceAll(msg, "`%", "");
 								string chat_color = "`$";
 								if (pInfo(peer)->d_name.empty()) {
-									chat_color = pInfo(peer)->superdev ? "`5" : pInfo(peer)->dev ? "`1" : pInfo(peer)->tmod ? "`^" : "`$";
+									chat_color = pInfo(peer)->superdev ? "`5" : pInfo(peer)->dev ? "`^" : pInfo(peer)->tmod ? "`^" : "`$";
 								}
 								if (has_playmod(pInfo(peer), "Infected!")) {
 									chat_color = "`2";
@@ -692,7 +1069,7 @@ int main(int argc, char* argv[]) {
 								if (pInfo(peer)->face == 1170)  chat_color = "`4";
 								gamepacket_t p, p2;
 								p.Insert("OnConsoleMessage");
-								p.Insert("CP:_PL:0_OID:_CT:[W]_ `6<`w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + (pInfo(peer)->is_legend ? " of Legend" : "") + "`6> " + chat_color + msg);
+								p.Insert("CP:_PL:0_OID:_CT:[W]_ `6<`w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + (pInfo(peer)->is_legend ? " of Legend" : "") + "`6> " + chat_color + msg);
 								p2.Insert("OnTalkBubble");
 								p2.Insert(pInfo(peer)->netID);
 								if (check_ != ":/" and check_ != ":p" and check_ != ":*" and check_ != ";)" and check_ != ":d" and check_ != ":o" and check_ != ":'(" and check_ != ":(") {
@@ -711,10 +1088,17 @@ int main(int argc, char* argv[]) {
 												}
 											}
 										}
-										if (not muted_) {
+										if (not muted_ and not pInfo(currentPeer)->Cheat_HideChat) {
 											p.CreatePacket(currentPeer);
 											p2.CreatePacket(currentPeer);
 										}
+									}
+								}
+								for (int i = 0; i < illegal_words.size(); i++) {
+									if (to_lower(msg).find(illegal_words[i]) != string::npos and pInfo(peer)->last_spam_detection + 1000 < duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count()) {
+										//add_pFlag(peer, 2);
+										pInfo(peer)->lastFlagged = Algorithm::get_epoch_ms() + 5000, pInfo(peer)->totalFlag++;
+										send_server_logs(pInfo(peer)->tankIDName, "Said something illegal `5" + msg);
 									}
 								}
 							}
@@ -735,6 +1119,14 @@ int main(int argc, char* argv[]) {
 							break;
 						} if (c_ == 1 or cch.find("action|rem_trade") != string::npos) {
 							mod_trade(peer, item_id, c_, (cch.find("action|rem_trade") != string::npos ? true : false));
+							break;
+						}
+						if (check_transmuted(peer, item_id)) {
+							gamepacket_t p;
+							p.Insert("OnTalkBubble"),
+								p.Insert(pInfo(peer)->netID),
+								p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+								p.CreatePacket(peer);
 							break;
 						}
 						if (cch.find("action|rem_trade") == string::npos) {
@@ -772,7 +1164,7 @@ int main(int argc, char* argv[]) {
 													p.Insert("OnTradeStatus");
 													p.Insert(pInfo(peer)->netID);
 													p.Insert("");
-													p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "``'s offer.``");
+													p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "``'s offer.``");
 													p.Insert(make_trade_offer(pInfo(peer), true) + "locked|0\naccepted|0");
 													p.CreatePacket(peer);
 													{
@@ -780,7 +1172,7 @@ int main(int argc, char* argv[]) {
 														p.Insert("OnTradeStatus");
 														p.Insert(pInfo(peer)->netID);
 														p.Insert("");
-														p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "``'s offer.``");
+														p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "``'s offer.``");
 														p.Insert(make_trade_offer(pInfo(peer), true) + "locked|0\nreset_locks|1\naccepted|0");
 														p.CreatePacket(currentPeer);
 													}
@@ -820,7 +1212,7 @@ int main(int argc, char* argv[]) {
 											p.Insert("OnTradeStatus");
 											p.Insert(pInfo(peer)->netID);
 											p.Insert("");
-											p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "``'s offer.``");
+											p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "``'s offer.``");
 											p.Insert(make_trade_offer(pInfo(peer), true) + "locked|0\naccepted|" + status_);
 											p.CreatePacket(peer);
 											{
@@ -854,7 +1246,7 @@ int main(int argc, char* argv[]) {
 													p.Insert("OnTradeStatus");
 													p.Insert(pInfo(peer)->netID);
 													p.Insert("");
-													p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "``'s offer.``");
+													p.Insert("`o" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "``'s offer.``");
 													p.Insert(make_trade_offer(pInfo(peer), true) + "locked|0\nreset_locks|1\naccepted|" + status_);
 													p.CreatePacket(currentPeer);
 												}
@@ -875,6 +1267,1144 @@ int main(int argc, char* argv[]) {
 					}
 					else if (cch == "action|trade_cancel\n") cancel_trade(peer);
 					if (pInfo(peer)->trading_with == -1) {
+						if (cch == "action|dialog_return\ndialog_name|world_spray\n") {
+							int got = 0;
+							modify_inventory(peer, 12600, got);
+							if (got == 0) break;
+							string name = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name](const World& a) { return a.name == name; });
+							if (p != worlds.end()) {
+								World* world = &worlds[p - worlds.begin()];
+								if (world->owner_name == pInfo(peer)->tankIDName || pInfo(peer)->superdev) {
+									int remove = -1;
+									modify_inventory(peer, 12600, remove);
+									for (int i_ = 0; i_ < world->blocks.size(); i_++) if (world->blocks[i_].fg % 2 != 0)  world->blocks[i_].planted = _int64(2.592e+6);
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == name) {
+											int x = pInfo(currentPeer)->x, y = pInfo(currentPeer)->y;
+											exit_(currentPeer, true);
+											join_world(currentPeer, name);
+										}
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage"), p.Insert("`wYou must own the world!``"), p.CreatePacket(peer);
+								}
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|provd_spray\n") {
+							int got = 0;
+							modify_inventory(peer, 9502, got);
+							if (got == 0) break;
+							string name = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name](const World& a) { return a.name == name; });
+							if (p != worlds.end()) {
+								World* world = &worlds[p - worlds.begin()];
+								if (world->owner_name == pInfo(peer)->tankIDName || pInfo(peer)->superdev) {
+									int remove = -1;
+									modify_inventory(peer, 9502, remove);
+									for (int i = 0; i < 6000; i++) {
+										if (items[world->blocks[i].fg].blockType == PROVIDER) {
+											world->blocks[i].planted = 0;
+										}
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == name) {
+											int x = pInfo(currentPeer)->x, y = pInfo(currentPeer)->y;
+											exit_(currentPeer, true);
+											join_world(currentPeer, name);
+										}
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage"), p.Insert("`wYou must own the world!``"), p.CreatePacket(peer);
+								}
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|wotwlistback\n\n") {
+							SendCmd(peer, "/top", true);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoneybuy\n\n") {
+							if (pInfo(peer)->offergems <= 0) break;
+							if (pInfo(peer)->gtwl >= pInfo(peer)->offergems) {
+								pInfo(peer)->gems += (pInfo(peer)->offergems * 100000);
+								{
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("You bought `0" + setGems(pInfo(peer)->offergems * 100000) + "`` Gems!");
+									p.CreatePacket(peer);
+								}
+								packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+								gamepacket_t p;
+								p.Insert("OnSetBux");
+								p.Insert(pInfo(peer)->gems);
+								p.Insert(0);
+								p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+								if (pInfo(peer)->supp >= 2) {
+									p.Insert((float)33796, (float)1, (float)0);
+								}
+								p.CreatePacket(peer);
+								pInfo(peer)->gtwl -= pInfo(peer)->offergems;
+							}
+							break;
+						}
+						else if (cch == "action|claimprogressbar\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopgrowtoken\n\n" || cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|toplist\n\n" || cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|yesterdaylist\n\n" || cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|overalllist\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoney\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprank\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopitems\n\n" || cch == "action|dialog_return\ndialog_name|socialportal\nbuttonClicked|onlinepointhub\n\n") {
+							gamepacket_t p;
+							p.Insert("OnDialogRequest");
+							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprank\n\n") p.Insert(a + "set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Ranks``|left|9474|\n\nadd_spacer|small|\n\nadd_textbox|`wPlease choose rank that you want to purchase!``|left|\nadd_spacer|small|\nadd_label_with_icon_button|small|`o <-- `7Road to Glory " + (pInfo(peer)->glo ? "`c(Owned)" : "") + "``|left|9436|" + (pInfo(peer)->glo ? "" : "shoprankglory") + "|\nadd_label_with_icon_button|small|`o <-- `7Grow Pass " + (pInfo(peer)->gp ? "`c(Owned)" : "") + "``|left|9222|" + (pInfo(peer)->gp ? "" : "shoprankgrowpass") + "\nadd_label_with_icon_button|small|`o <-- `7Moderator " + (pInfo(peer)->mod ? "`c(Owned)" : "") + "``|left|278|" + (pInfo(peer)->mod ? "" : "shoprankmod") + "|\nadd_spacer|small|\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopitems\n\n") p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Rare Items``|left|7188|\n\nadd_spacer|small|\n\nadd_textbox|`wPlease choose item that you want to purchase!``|left|\n\nadd_spacer|small|" + shop_list + "||\nadd_button_with_icon||END_LIST|noflags|0|0|\nadd_button|shop|`0Back``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoney\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Buy Gems``|left|9162|\n\nadd_spacer|small|\nadd_textbox|`11 Hoshi `wis `9100,000 `wgems!``|\nadd_textbox|`wYou have `1" + to_string(pInfo(peer)->gtwl) + " Hoshi`w, how much hoshi you want to spend for gems? `7(Enter hoshi amount)``|\nadd_text_input|gemspurchase|`1Hoshi``||30|\nend_dialog|shopgemsconfirm|Cancel|Checkout|\n");
+							if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|toplist\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`8Top Worlds Of Today``|left|394|\nadd_spacer|" + top_list + "\nadd_button|wotwlistback|`oBack`|NOFLAGS|0|0|\nend_dialog|top|Close||\n");
+							if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|yesterdaylist\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`5Top Worlds Of Yesterday``|left|394|\nadd_spacer|" + top_yesterday_list + "\nadd_button|wotwlistback|`oBack`|NOFLAGS|0|0|\nend_dialog|top|Close||\n");
+							if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|overalllist\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Top Worlds Of All Time``|left|394|\nadd_spacer|" + top_overall_list + "\nadd_button|wotwlistback|`oBack`|NOFLAGS|0|0|\nend_dialog|top|Close||\n");
+							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopgrowtoken\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Growtoken``|left|1486|\nadd_spacer|small|\n\nadd_textbox|`7Please choose packet you want to purchase:``|left|\n\nadd_spacer|small|\nadd_button_with_icon|gtoken_packet_1|`7Buy Packet 1|staticYellowFrame|1486|5|\nadd_button_with_icon|gtoken_packet_2|`7Buy Packet 2|staticYellowFrame|1486|10|\nadd_button_with_icon|gtoken_packet_3|`7Buy Packet 3|staticYellowFrame|1486|50|\nadd_button_with_icon|gtoken_packet_4|`7Buy Packet 4|staticYellowFrame|6802||\nadd_button_with_icon||END_LIST|noflags|0|0|\nadd_button|shop|`0Back``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							if (cch == "action|dialog_return\ndialog_name|socialportal\nbuttonClicked|onlinepointhub\n\n") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`0Online Star Hub``|left|7074|\nadd_spacer|small|\nadd_textbox|Welcome to Online Star HUB! Do you have any Online Star? You can buy items from me with them.|left|\nadd_smalltext|`2You can earn 1 Online Star every 5 minutes just by playing the game.``|left|\nadd_spacer|small|\nadd_textbox|You have `1" + setGems(pInfo(peer)->opc) + " ``Online Star``.|left|\ntext_scaling_string|99,000OPC|" + opc_list + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_button|chc0|OK|noflags|0|0|\nnend_dialog|gazette||OK|");
+							if (cch == "action|claimprogressbar\n")p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wAbout Valentine's Event``|left|384|\nadd_spacer|small|\nadd_textbox|During Valentine's Week you will gain points for opening Golden Booty Chests. Claim enough points to earn bonus rewards.|left|\nadd_spacer|small|\nadd_textbox|Current Progress: " + to_string(pInfo(peer)->booty_broken) + "/100|left|\nadd_spacer|small|\nadd_textbox|Reward:|left|\nadd_label_with_icon|small|Super Golden Booty Chest|left|9350|\nadd_smalltext|             - 4x chance of getting a Golden Heart Crystal when opening!|left|\nend_dialog|valentines_quest||OK|\n");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankmod\n\n" || cch == "action|shoprankmod\n\n" || cch == "action|shoprankmod\n" || cch == "action|shoprankmod") {
+							int modPurchased = GlobalStats.totalModeratorBought;
+							int modPrice = 150 + (modPurchased * 25);
+							gamepacket_t p(500);
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Moderator``|left|278|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `1" + fixint(modPrice) + " Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive daily moderator items everyday + you can submit your custom moderator item, only moderator commands available in `2/help`7, and Moderator role on `5Growhoshi Discord Server`w.<CR><CR>`2Note`w: `#Moderator`w price will rise `125 Hoshi`w if someone bought.<CR>`4Warning`w: you might got demoted if you abuse your power!``|left|\nadd_spacer|\nadd_button|shoprankmodbuy|`0Purchase for `1" + fixint(modPrice) + " Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankgrowpass\n\n" || cch == "action|shoprankgrowpass\n\n" || cch == "action|shoprankgrowpass\n" || cch == "action|shoprankgrowpass") {
+							gamepacket_t p(500);
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Grow Pass``|left|9222|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `150 Hoshi``|left|\nadd_smalltext|Duration: `7[```531 Days```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive daily items everyday, get 2x xp and gems from breaking block or harvesting tree, receive newest growtopia items, unlock exclusive title and skin only for grow pass!``|left|\nadd_spacer|\nadd_button|shoprankgrowpassbuy|`0Purchase for `150 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankglory\n\n" || cch == "action|shoprankglory\n\n" || cch == "action|shoprankglory\n" || cch == "action|shoprankglory") {
+							gamepacket_t p(500);
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Road to Glory``|left|9436|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `125 Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive 100k gems instantly, get up to 4M gems by leveling up, and Unlock Account Security feature.``|left|\nadd_spacer|\nadd_button|shoprankglorybuy|`0Purchase for `125 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankmodbuy\n\n" || cch == "action|shoprankmodbuy\n\n" || cch == "action|shoprankmodbuy\n" || cch == "action|shoprankmodbuy") {
+							int modPurchased = GlobalStats.totalModeratorBought;
+							int modPrice = 150 + (modPurchased * 25);
+							if (pInfo(peer)->gtwl >= modPrice) {
+								pInfo(peer)->gtwl -= modPrice;
+								GlobalStats.totalModeratorBought++;
+								packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+								pInfo(peer)->mod = 1;
+								gamepacket_t p2, p3;
+								p2.Insert("OnConsoleMessage");
+								p2.Insert("`#**`` `$The Ancient Ones`` have made`` " + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "`` as `#Moderator`` (`2/shop`` to purchase moderator!)");
+								p3.Insert("OnConsoleMessage");
+								p3.Insert("`o>> You purchased Moderator! Type /togglemods to bring up your `#@``Name and /help to see new available commands!``");
+								p3.CreatePacket(peer);
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+									p2.CreatePacket(currentPeer);
+								}
+								ifstream in("database/server_statistic.json");
+								json infile = json::parse(in);
+								infile["totalModeratorBought"] = GlobalStats.totalModeratorBought;
+								ofstream out("database/server_statistic.json");
+								out << setw(4) << infile << endl;
+								in.close();
+								out.close();
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankgrowpassbuy\n\n" || cch == "action|shoprankgrowpassbuy\n\n" || cch == "action|shoprankgrowpassbuy\n" || cch == "action|shoprankgrowpassbuy") {
+							if (pInfo(peer)->gtwl >= 50) {
+								int c_ = 1;
+								if (modify_inventory(peer, 11304, c_) == 0) {
+									pInfo(peer)->gtwl -= 50;
+									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`o>> You purchased Royal Grow Pass Token, check your inventory and consume to get the benefits!");
+									p.CreatePacket(peer);
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("No inventory space.");
+									p.CreatePacket(peer);
+								}
+							}
+							else {
+								gamepacket_t p;
+								p.Insert("OnConsoleMessage");
+								p.Insert("You don't have enough `1Hoshi`` to buy this.");
+								p.CreatePacket(peer);
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankglorybuy\n\n" || cch == "action|shoprankglorybuy\n\n" || cch == "action|shoprankglorybuy\n" || cch == "action|shoprankglorybuy") {
+							if (pInfo(peer)->gtwl >= 25) {
+								pInfo(peer)->gems += 100000;
+								gamepacket_t p;
+								p.Insert("OnSetBux");
+								p.Insert(pInfo(peer)->gems);
+								p.Insert(0);
+								p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+								if (pInfo(peer)->supp >= 2) {
+									p.Insert((float)33796, (float)1, (float)0);
+								}
+								p.CreatePacket(peer);
+								pInfo(peer)->gtwl -= 25;
+								packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+								pInfo(peer)->glo = 1;
+								{
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`o>> You purchased Road to Glory! Wrench yourself and press on Road to Glory button!``");
+									p.CreatePacket(peer);
+								}
+							}
+							break;
+						}
+						else if (cch == "action|storenavigate\nitem|main\nselection|deposit\n" || cch == "action|storenavigate\nitem|locks\nselection|upgrade_backpack\n" || cch == "action|storenavigate\nitem|main\nselection|bonanza\n" || cch == "action|storenavigate\nitem|main\nselection|calendar\n" || cch == "action|store\nlocation|bottommenu\n" || cch == "action|store\nlocation|gem\n" || cch == "action|store\nlocation|pausemenu\n" || cch == "action|storenavigate\nitem|main\nselection|gems_rain\n") {
+							if (cch == "action|store\nlocation|bottommenu\n" || cch == "action|store\nlocation|gem\n" || cch == "action|store\nlocation|pausemenu\n") shop_tab(peer, "tab1");
+							if (cch == "action|storenavigate\nitem|main\nselection|gems_rain\n") shop_tab(peer, "tab1_1");
+							if (cch == "action|storenavigate\nitem|main\nselection|calendar\n") shop_tab(peer, "tab1_2");
+							if (cch == "action|storenavigate\nitem|main\nselection|bonanza\n")	shop_tab(peer, "tab1_3");
+							if (cch == "action|storenavigate\nitem|locks\nselection|upgrade_backpack\n") shop_tab(peer, "tab2_1");
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|claim_reward\n\n") {
+							if (pInfo(peer)->gp == 1) {
+								if (today_day != pInfo(peer)->gd) {
+									// IMPROVE GROW PASS REWARDS
+									vector<int> list2{ 1796, 10396, 11476, 542, 10386, 722, 10826 };
+									int receive = 1, item = list2[rand() % list2.size()], received = 1;
+									if (item == 10386 || item == 722) receive = 20, received = 20;
+									if (item == 542) receive = 100, received = 100;
+									if (item == 10826) receive = 5, received = 5;
+									if (modify_inventory(peer, item, receive) == 0) {
+										pInfo(peer)->gd = today_day;
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("`9 >> You claimed your Grow Pass reward:");
+											p.CreatePacket(peer);
+										}
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("Given `0" + to_string(received) + " " + items[item].name + "``.");
+											p.CreatePacket(peer);
+										}
+										PlayerMoving data_{};
+										data_.packetType = 17;
+										data_.netID = 48;
+										data_.YSpeed = 48;
+										data_.x = pInfo(peer)->x + 16;
+										data_.y = pInfo(peer)->y + 16;
+										BYTE* raw = packPlayerMoving(&data_);
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+												send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+											}
+										}
+										delete[] raw;
+									}
+									else {
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("Clean your inventory and try again!");
+											p.CreatePacket(peer);
+										}
+									}
+								}
+								else {
+									{
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("You already claimed your reward today!");
+										p.CreatePacket(peer);
+									}
+								}
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|surge\n") {
+							if (pInfo(peer)->lastwrenchb == 4296 || pInfo(peer)->lastwrenchb == 8558) {
+								setstats(peer, rand() % 30, "", items[pInfo(peer)->lastwrenchb].name);
+								pInfo(peer)->lastwrenchb = 0;
+							}
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|builder_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|fishing_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|geiger_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|farmer_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|provider_reward\n\n") {
+							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|farmer_reward\n\n") farmer_reward_show(peer);
+							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|provider_reward\n\n")provider_reward_show(peer);
+							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|geiger_reward\n\n") geiger_reward_show(peer);
+							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|fishing_reward\n\n") 	fishing_reward_show(peer);
+							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|builder_reward\n\n")	builder_reward_show(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|backpack_menu\nbuttonClicked|backpack_upgrade\n\n") {
+							if (pInfo(peer)->gems >= (1000 * ((pInfo(peer)->b_l * pInfo(peer)->b_l) + 25)) * 2) {
+								if (pInfo(peer)->b_l * 10 > 250) {
+									{
+										gamepacket_t p;
+										p.Insert("OnTalkBubble");
+										p.Insert(pInfo(peer)->netID);
+										p.Insert("You have reached max slots!");
+										p.Insert(0), p.Insert(0);
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									pInfo(peer)->gems -= (1000 * ((pInfo(peer)->b_l * pInfo(peer)->b_l) + 25)) * 2;
+									pInfo(peer)->b_l++;
+									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+									gamepacket_t p;
+									p.Insert("OnSetBux");
+									p.Insert(pInfo(peer)->gems);
+									p.Insert(0);
+									p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+									if (pInfo(peer)->supp >= 2) {
+										p.Insert((float)33796, (float)1, (float)0);
+									}
+									p.CreatePacket(peer);
+									{
+										gamepacket_t p;
+										p.Insert("OnTalkBubble");
+										p.Insert(pInfo(peer)->netID);
+										p.Insert("Congratulations! You have upgraded your Backpack!");
+										p.Insert(0), p.Insert(0);
+										p.CreatePacket(peer);
+									}
+									backpack_show(peer);
+								}
+							}
+							else {
+								gamepacket_t p;
+								p.Insert("OnTalkBubble");
+								p.Insert(pInfo(peer)->netID);
+								p.Insert("You don't have enough gems!");
+								p.Insert(0), p.Insert(0);
+								p.CreatePacket(peer);
+							}
+							break;
+						}
+						else if (cch == "action|battlepasspopup\n") {
+							gamepacket_t p(550);
+							p.Insert("OnDialogRequest");
+							int growpassid = 6124;
+							if (today_day == pInfo(peer)->gd) growpassid = 6292;
+							if (pInfo(peer)->gp == 1) p.Insert("set_default_color|`o\nadd_label_with_icon|big|Grow Pass Rewards|left|9222|\nadd_smalltext|`9You can claim your daily reward everyday here.``|left|\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nend_dialog|worlds_list||Back|\nadd_quick_exit|\n");
+							else p.Insert("set_default_color|`o\nadd_label_with_icon|big|Grow Pass Rewards|left|9222|\nadd_button|deposit|`2Purchase``|noflags|0|0|\nadd_smalltext|`4You must purchase the Grow Pass role to claim your prize!``|left|\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nend_dialog|||Back|\nadd_quick_exit|\n");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|AccountSecurity\nlocation|pausemenu\n") {
+							gamepacket_t p(500);
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wAdvanced Account Protection ``|left|3732|\nadd_textbox|`1You are about to enable the Advanced Account Protection.``|left|\nadd_textbox|`1After that, every time you try to log in from a new device and IP you will receive an dialog with a PIN confirmation button.``|left|\nadd_textbox|`1This will significantly increase your account security.``|left|\nend_dialog|secureaccount|Cancel|Ok|");
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|surgery_reward\n\n") {
+							surgery_reward_show(peer);
+							break;
+						}
+						else if (cch == "action|dialog_return\ndialog_name|2646\nbuttonClicked|off\n\n") {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (p != worlds.end()) {
+								World* world_ = &worlds[p - worlds.begin()];
+								WorldBlock* block_ = &world_->blocks[pInfo(peer)->lastwrenchx + (pInfo(peer)->lastwrenchy * 100)];
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(peer)->world != pInfo(currentPeer)->world or block_->spotlight != pInfo(currentPeer)->tankIDName) continue;
+									pInfo(currentPeer)->spotlight = false, update_clothes(currentPeer);
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage"), p.Insert("Back to anonymity. (`$In the Spotlight`` mod removed)"), p.CreatePacket(currentPeer);
+								}
+								gamepacket_t p;
+								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("Lights out!"), p.CreatePacket(peer);
+								block_->spotlight = "";
+							}
+							break;
+						}
+						else if (cch == "action|refresh_item_data\n") {
+							if (pInfo(peer)->isIn) {
+								login_count++;
+								if (login_count < 8) {
+									packet_(peer, "action|log\nmsg|One moment, updating item data...");
+									sendItemDataToPeer(peer);
+									//enet_host_flush(server);
+								}
+								else packet_(peer, "action|log\nmsg|CT:[S]_ `4OOPS:`` Too many people logging in at once. Please press `5CANCEL`` and try again in a few seconds.", "");
+								//enet_peer_disconnect_later(peer, 0);
+							}
+							break;
+						}
+						if (cch == "action|enter_game\n" && pInfo(peer)->isIn && !pInfo(peer)->in_enter_game) {
+							pInfo(peer)->in_enter_game = true;
+							if (pInfo(peer)->isIn) {
+								pInfo(peer)->enter_game++;
+								Sleep(1000);
+								if (pInfo(peer)->world == "" && pInfo(peer)->enter_game == 1) {
+									if (pInfo(peer)->tankIDName.empty()) {
+										gamepacket_t p(250);
+										p.Insert("OnDialogRequest"), p.Insert(Algorithm::r_dialog("")), p.CreatePacket(peer);
+									}
+									else {
+										pInfo(peer)->tmod = pInfo(peer)->mod;
+										pInfo(peer)->name_color = (pInfo(peer)->superdev == 1 ? "`c@" : pInfo(peer)->dev == 1 ? "`6@" : pInfo(peer)->supermod == 1 ? "`8@" : (pInfo(peer)->tmod == 1) ? "`#@" : "`0");
+										pInfo(peer)->modName = (pInfo(peer)->superdev == 1 ? "`c@" + pInfo(peer)->tankIDName : pInfo(peer)->dev == 1 ? "`6@" + pInfo(peer)->tankIDName : pInfo(peer)->supermod == 1 ? "`8@" + pInfo(peer)->tankIDName : (pInfo(peer)->tmod == 1 ? "`#@" + pInfo(peer)->tankIDName : "`0" + pInfo(peer)->tankIDName));
+										int on_ = 0, t_ = 0;
+										vector<string> friends_;
+										for (int c_ = 0; c_ < pInfo(peer)->friends.size(); c_++) friends_.push_back(pInfo(peer)->friends[c_].name);
+										if (not pInfo(peer)->invis and not pInfo(peer)->m_h) {
+											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+												t_ += 1 + rand() % 3 + 1;
+												if (find(friends_.begin(), friends_.end(), pInfo(currentPeer)->tankIDName) != friends_.end()) {
+													if (pInfo(currentPeer)->show_friend_notifications_) {
+														gamepacket_t p;
+														p.Insert("OnConsoleMessage"), p.Insert("`3FRIEND ALERT:`` " + pInfo(peer)->modName + "`` has `2logged on``.");
+														packet_(currentPeer, "action|play_sfx\nfile|audio/friend_logon.wav\ndelayMS|0");
+														p.CreatePacket(currentPeer);
+													}
+													on_++;
+												}
+											}
+										}
+										{
+											gamepacket_t p;
+											p.Insert("OnEmoticonDataChanged");
+											p.Insert(151749376);
+											p.Insert("(wl)|ā|1&(yes)|Ă|1&(no)|ă|1&(love)|Ą|1&(oops)|ą|1&(shy)|Ć|1&(wink)|ć|1&(tongue)|Ĉ|1&(agree)|ĉ|1&(sleep)|Ċ|1&(punch)|ċ|1&(music)|Č|1&(build)|č|1&(megaphone)|Ď|1&(sigh)|ď|1&(mad)|Đ|1&(wow)|đ|1&(dance)|Ē|1&(see-no-evil)|ē|1&(bheart)|Ĕ|1&(heart)|ĕ|1&(grow)|Ė|1&(gems)|ė|1&(kiss)|Ę|1&(gtoken)|ę|1&(lol)|Ě|1&(smile)|Ā|1&(cool)|Ĝ|1&(cry)|ĝ|1&(vend)|Ğ|1&(bunny)|ě|1&(cactus)|ğ|1&(pine)|Ĥ|1&(peace)|ģ|1&(terror)|ġ|1&(troll)|Ġ|1&(evil)|Ģ|1&(fireworks)|Ħ|1&(football)|ĥ|1&(alien)|ħ|1&(party)|Ĩ|1&(pizza)|ĩ|1&(clap)|Ī|1&(song)|ī|1&(ghost)|Ĭ|1&(nuke)|ĭ|1&(halo)|Į|1&(turkey)|į|1&(gift)|İ|1&(cake)|ı|1&(heartarrow)|Ĳ|1&(lucky)|ĳ|1&(shamrock)|Ĵ|1&(grin)|ĵ|1&(ill)|Ķ|1&");
+											p.CreatePacket(peer);
+										}
+										if (pInfo(peer)->surgery_type == -1) pInfo(peer)->surgery_type = rand() % 30;
+										SendReceive(peer);
+										{
+											if (pInfo(peer)->pinata_day != today_day) {
+												pInfo(peer)->pinata_prize = false;
+												pInfo(peer)->pinata_claimed = false;
+											}
+											gamepacket_t p;
+											p.Insert("OnProgressUISet"), p.Insert(1), p.Insert(0), p.Insert(to_string(pInfo(peer)->pinata_claimed)), p.Insert(1), p.Insert(""), p.Insert(to_string(pInfo(peer)->pinata_prize)), p.CreatePacket(peer);
+										}
+										// ENTER GAME NOTIFICATION
+										gamepacket_t p1, p5, p3;
+										p1.Insert("OnConsoleMessage"), p1.Insert("Welcome back, `w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "````." + (pInfo(peer)->friends.size() == 0 ? "" : (on_ != 0 ? " `w" + to_string(on_) + "`` friend is online." : " No friends are online."))), p1.CreatePacket(peer);
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											if (thedaytoday == 1) p.Insert("`3Today is Trees Day!`` 50% higher chance to get `2extra block`` from harvesting tree.");
+											else if (thedaytoday == 2) p.Insert("`3Today is Breaking Day!`` 15% higher chance to get `2extra seed``.");
+											else if (thedaytoday == 3) p.Insert("`3Today is Geiger Day!`` Higher chance of getting a `2better Geiger prize`` & Irradiated mod will last only `210 minutes``.");
+											else if (thedaytoday == 4) p.Insert("`3Today is Level Day!`` Get extra `2500 gems`` bonus for leveling up.");
+											else if (thedaytoday == 5) p.Insert("`3Today is Gems Day!`` 50% higher chance to get `2extra`` gem drop.");
+											else if (thedaytoday == 6) p.Insert("`3Today is Surgery Day!`` Malpractice takes `215 minutes`` and Recovering takes `230 minutes`` & receive `2different prizes``.");
+											else if (thedaytoday == 0) p.Insert("`3Today is Fishing Day!`` Catch a fish and receive `2extra lb``.");
+											p.CreatePacket(peer);
+										}
+										//p5.Insert("OnConsoleMessage"), p5.Insert("`3Weekend Events: You'll get extra `1Hoshi `3if you top up.``"), p5.CreatePacket(peer);
+										if (today_day != pInfo(peer)->dd) {
+											pInfo(peer)->AlreadyDailyQ = false;
+											pInfo(peer)->dd = today_day;
+										}
+										if (pInfo(peer)->mod) {
+											if (get_free_slots(pInfo(peer)) >= 1) {
+												if (today_day != pInfo(peer)->mds) {
+													pInfo(peer)->mds = today_day;
+													vector<int> list2{ 408, 274, 276 };
+													int receive = 1, item = list2[rand() % list2.size()], got = 1;
+													modify_inventory(peer, item, receive);
+													gamepacket_t p, p2;
+													p.Insert("OnConsoleMessage"), p.Insert("Your mod appreciation bonus (feel free keep, trade, or use for prizes) for today is:"), p.CreatePacket(peer);
+													p2.Insert("OnConsoleMessage"), p2.Insert("Given `0" + to_string(got) + " " + items[item].name + "``."), p2.CreatePacket(peer);
+												}
+											}
+										}
+										world_menu(peer);
+										news(peer);
+									}
+								}
+								else {
+									enet_peer_disconnect_later(peer, 0);
+								}
+								break;
+							}
+						}
+						if (cch.find("buttonClicked|bouncer_gemsbuy") != string::npos) {
+							int addItem = 0, removeItem = 0, itemPrice = 0, totalPrice = 0, allwl = 0, wl = 0, dl = 0, cl = 0;
+							int purchaseAmount = atoi(explode("\n", explode("how|", cch)[1])[0].c_str());
+							if (purchaseAmount <= 0 || purchaseAmount > 200) continue;
+							int itemKind = atoi(explode("\n", explode("gemsbuy|", cch)[1])[0].c_str());
+							modify_inventory(peer, 242, wl);
+							modify_inventory(peer, 1796, dl);
+							modify_inventory(peer, 7188, cl);
+							allwl = wl + (dl * 100);
+							int allcl = cl * 10000;
+							switch (itemKind) {
+							case 50: {
+								itemPrice = 50;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (allwl >= totalPrice || allcl >= totalPrice && totalPrice > 20000) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9490, c_) == 0) {
+										if (totalPrice <= 20000) {
+											if (wl >= totalPrice) modify_inventory(peer, 242, totalPrice *= -1);
+											else {
+												modify_inventory(peer, 242, wl *= -1);
+												modify_inventory(peer, 1796, dl *= -1);
+												int givedl = (allwl - totalPrice) / 100;
+												int givewl = (allwl - totalPrice) - (givedl * 100);
+												modify_inventory(peer, 242, givewl);
+												modify_inventory(peer, 1796, givedl);
+											}
+										}
+										else {
+											int removebgl = (totalPrice / 10000) * -1;
+											modify_inventory(peer, 7188, removebgl);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9490].name + " for " + to_string(totalPrice) + " World Lock]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No inventory space.");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough wls!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 100: {
+								itemPrice = 100;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (allwl >= totalPrice || allcl >= totalPrice && totalPrice > 20000) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9492, c_) == 0) {
+										if (totalPrice <= 20000) {
+											if (wl >= totalPrice) modify_inventory(peer, 242, totalPrice *= -1);
+											else {
+												modify_inventory(peer, 242, wl *= -1);
+												modify_inventory(peer, 1796, dl *= -1);
+												int givedl = (allwl - totalPrice) / 100;
+												int givewl = (allwl - totalPrice) - (givedl * 100);
+												modify_inventory(peer, 242, givewl);
+												modify_inventory(peer, 1796, givedl);
+											}
+										}
+										else {
+											int removebgl = (totalPrice / 10000) * -1;
+											modify_inventory(peer, 7188, removebgl);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9492].name + " for " + to_string(totalPrice) + " World Lock]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No inventory space.");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough wls!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 250: {
+								itemPrice = 250;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (allwl >= totalPrice || allcl >= totalPrice && totalPrice > 20000) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9494, c_) == 0) {
+										if (totalPrice <= 20000) {
+											if (wl >= totalPrice) modify_inventory(peer, 242, totalPrice *= -1);
+											else {
+												modify_inventory(peer, 242, wl *= -1);
+												modify_inventory(peer, 1796, dl *= -1);
+												int givedl = (allwl - totalPrice) / 100;
+												int givewl = (allwl - totalPrice) - (givedl * 100);
+												modify_inventory(peer, 242, givewl);
+												modify_inventory(peer, 1796, givedl);
+											}
+										}
+										else {
+											int removebgl = (totalPrice / 10000) * -1;
+											modify_inventory(peer, 7188, removebgl);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9494].name + " for " + to_string(totalPrice) + " World Lock]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No inventory space.");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough wls!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 500: {
+								itemPrice = 500;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (allwl >= totalPrice || allcl >= totalPrice && totalPrice > 20000) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9496, c_) == 0) {
+										if (totalPrice <= 20000) {
+											if (wl >= totalPrice) modify_inventory(peer, 242, totalPrice *= -1);
+											else {
+												modify_inventory(peer, 242, wl *= -1);
+												modify_inventory(peer, 1796, dl *= -1);
+												int givedl = (allwl - totalPrice) / 100;
+												int givewl = (allwl - totalPrice) - (givedl * 100);
+												modify_inventory(peer, 242, givewl);
+												modify_inventory(peer, 1796, givedl);
+											}
+										}
+										else {
+											int removebgl = (totalPrice / 10000) * -1;
+											modify_inventory(peer, 7188, removebgl);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9496].name + " for " + to_string(totalPrice) + " World Lock]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No inventory space.");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough wls!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 1000: {
+								itemPrice = 1000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (allwl >= totalPrice || allcl >= totalPrice && totalPrice > 20000) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9498, c_) == 0) {
+										if (totalPrice <= 20000) {
+											if (wl >= totalPrice) modify_inventory(peer, 242, totalPrice *= -1);
+											else {
+												modify_inventory(peer, 242, wl *= -1);
+												modify_inventory(peer, 1796, dl *= -1);
+												int givedl = (allwl - totalPrice) / 100;
+												int givewl = (allwl - totalPrice) - (givedl * 100);
+												modify_inventory(peer, 242, givewl);
+												modify_inventory(peer, 1796, givedl);
+											}
+										}
+										else {
+											int removebgl = (totalPrice / 10000) * -1;
+											modify_inventory(peer, 7188, removebgl);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9498].name + " for " + to_string(totalPrice) + " World Lock]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No inventory space.");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough wls!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 50000: {
+								itemPrice = 100000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (pInfo(peer)->gems >= totalPrice) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9490, c_) == 0) {
+										{
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems -= totalPrice), p.Insert(1), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) p.Insert((float)33796, (float)1, (float)0);
+											p.CreatePacket(peer);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9490].name + " for " + fixint(totalPrice) + " ė]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No Inventory Space");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough gems!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 100000: {
+								itemPrice = 200000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (pInfo(peer)->gems >= totalPrice) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9492, c_) == 0) {
+										{
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems -= totalPrice), p.Insert(1), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) p.Insert((float)33796, (float)1, (float)0);
+											p.CreatePacket(peer);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9492].name + " for " + fixint(totalPrice) + " ė]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No Inventory Space");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough gems!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 250000: {
+								itemPrice = 500000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (pInfo(peer)->gems >= totalPrice) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9494, c_) == 0) {
+										{
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems -= totalPrice), p.Insert(1), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) p.Insert((float)33796, (float)1, (float)0);
+											p.CreatePacket(peer);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9494].name + " for " + fixint(totalPrice) + " ė]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No Inventory Space");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough gems!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 500000: {
+								itemPrice = 1000000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (pInfo(peer)->gems >= totalPrice) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9496, c_) == 0) {
+										{
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems -= totalPrice), p.Insert(1), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) p.Insert((float)33796, (float)1, (float)0);
+											p.CreatePacket(peer);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9496].name + " for " + fixint(totalPrice) + " ė]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No Inventory Space");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough gems!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							case 1000000: {
+								itemPrice = 2000000;
+								totalPrice = itemPrice *= purchaseAmount;
+								if (pInfo(peer)->gems >= totalPrice) {
+									int c_ = purchaseAmount;
+									if (modify_inventory(peer, 9498, c_) == 0) {
+										{
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems -= totalPrice), p.Insert(1), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) p.Insert((float)33796, (float)1, (float)0);
+											p.CreatePacket(peer);
+										}
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world == pInfo(currentPeer)->world) {
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`9[" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + " bought " + to_string(purchaseAmount) + " " + items[9498].name + " for " + fixint(totalPrice) + " ė]");
+												p.CreatePacket(currentPeer);
+												packet_(currentPeer, "action|play_sfx\nfile|audio/cash_register.wav\ndelayMS|0");
+											}
+										}
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("No Inventory Space");
+										p.CreatePacket(peer);
+									}
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`9You don't have enough gems!``");
+									p.CreatePacket(peer);
+								}
+								break;
+							}
+							default: continue;
+							}
+							break;
+						}
+						else if (cch.find("buttonClicked|bouncer_backButton") != string::npos) {
+							DialogBuilder bouncer;
+							int wl = 0, dl = 0;
+							int GemsPrice = 0, LockPrice = 0;
+							modify_inventory(peer, 242, wl);
+							modify_inventory(peer, 1796, dl);
+							bouncer.add_label_icon(true, 12258, "The Bouncer")
+								.add_smalltext("Ho there, friend! Bouncer's my name, and jewelry are my game. I Love 'em all, Gems even Locks! If you can part with some jewels, I'll give you something special in return. Whaddya say?")
+								.add_smalltext("" + (wl + dl != 0 ? "`9Smells like you are carrying " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", and " + to_string(dl) + " Diamond Lock" : "") + "``" : "`9Hmm, smells like you don't care any world locks``") + "")
+								.add_smalltext("`9You've also got " + fixint(pInfo(peer)->gems) + " ė on your pocket``")
+								.add_spacer(false)
+								.add_label_icon(false, 9162, "Purchase with Gems");
+							// The Bouncer List
+							for (int i = 0; i < items.size(); i++) {
+								if (i == 9490) GemsPrice = 50000, bouncer.add_static_icon_button("gems_" + to_string(GemsPrice) + "", i, items[i].ori_name, "");
+								if (i == 9492) GemsPrice = 100000, bouncer.add_static_icon_button("gems_" + to_string(GemsPrice) + "", i, items[i].ori_name, "");
+								if (i == 9494) GemsPrice = 250000, bouncer.add_static_icon_button("gems_" + to_string(GemsPrice) + "", i, items[i].ori_name, "");
+								if (i == 9496) GemsPrice = 500000, bouncer.add_static_icon_button("gems_" + to_string(GemsPrice) + "", i, items[i].ori_name, "");
+								if (i == 9498) GemsPrice = 1000000, bouncer.add_static_icon_button("gems_" + to_string(GemsPrice) + "", i, items[i].ori_name, "");
+							}
+							bouncer.end_list()
+								.add_label_icon(false, 242, "Purchase with Locks");
+							for (int i = 0; i < items.size(); i++) {
+								if (i == 9490) LockPrice = 50, bouncer.add_static_icon_button("gems_" + to_string(LockPrice) + "", i, items[i].ori_name, "");
+								if (i == 9492) LockPrice = 100, bouncer.add_static_icon_button("gems_" + to_string(LockPrice) + "", i, items[i].ori_name, "");
+								if (i == 9494) LockPrice = 250, bouncer.add_static_icon_button("gems_" + to_string(LockPrice) + "", i, items[i].ori_name, "");
+								if (i == 9496) LockPrice = 500, bouncer.add_static_icon_button("gems_" + to_string(LockPrice) + "", i, items[i].ori_name, "");
+								if (i == 9498) LockPrice = 1000, bouncer.add_static_icon_button("gems_" + to_string(LockPrice) + "", i, items[i].ori_name, "");
+							}
+							// The end of Bouncer List
+							bouncer.end_list()
+								.end_dialog("bouncer_dialog", "Exit", "");
+							enet_peer_send(peer, 0, Variant{ "OnDialogRequest" }.push(bouncer.to_string()).pack());
+							break;
+						}
+						else if (cch.find("buttonClicked|visit_home_world_") != string::npos) {
+							if (pInfo(peer)->last_world_enter + 500 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+								pInfo(peer)->last_world_enter = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+								string nameworld = explode("\n", explode("buttonClicked|visit_home_world_", cch)[1])[0];
+								join_world(peer, nameworld);
+								break;
+							}
+						}
+						else if (cch.find("buttonClicked|rename_world") != string::npos) {
+							gamepacket_t p;
+							p.Insert("OnTextOverlay");
+							p.Insert("Sorry but this feature is still under development.");
+							p.CreatePacket(peer);
+							break;
+						}
+						if (cch.contains("buttonClicked|clear_items")) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (paa != worlds.end()) {
+								World* world_ = &worlds[paa - worlds.begin()];
+								world_->drop.clear();
+								{
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									p.Insert("`#**`` `$The Ancient Ones `ohave `bcleared `odropped items `oat `w" + pInfo(peer)->world + " `#** `o(`4/rules`o to see the rules!)");
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										packet_(currentPeer, "action|play_sfx\nfile|audio/bigboom.wav\ndelayMS|0");
+										p.CreatePacket(currentPeer);
+									}
+									add_modlogs(peer, (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name), "CLEARED DROPPED ITEMS AT: `#" + pInfo(peer)->world, "");
+									{
+										world_->drop.clear();
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+											exit_(currentPeer);
+										}
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.contains("buttonClicked|clear_world")) {
+							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (paa != worlds.end()) {
+									World* world_ = &worlds[paa - worlds.begin()];
+									if (world_->guild_id != 0) {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("You can't clear Guild World");
+										p.CreatePacket(peer);
+										break;
+									}
+									else {
+										pInfo(peer)->confirm_reset = 0;
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("`#**`` `$The Ancient Ones `ohave `bcleared `oworld `w" + pInfo(peer)->world + " `#**`o (`4/rules`o to see the rules!)");
+											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+												packet_(currentPeer, "action|play_sfx\nfile|audio/bigboom.wav\ndelayMS|0");
+												p.CreatePacket(currentPeer);
+											}
+											add_modlogs(peer, (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name), "CLEARED WORLD: `#" + pInfo(peer)->world, "");
+											{
+												world_->nuked = false;
+												world_->n_t = "";
+												world_->n_b = "";
+												world_->admins.clear();
+												world_->drop.clear();
+												world_->sbox1.clear();
+												world_->bulletin.clear();
+												world_->weather = 0;
+												world_->open_to_public = false, world_->disable_music_blocks = false, world_->make_music_blocks_invisible = false;
+												world_->bannedPlayers.clear();
+												world_->music_bpm = 100;
+												world_->entry_level = 1;
+												world_->active_jammers.clear();
+												world_->npc.clear();
+												world_->machines.clear();
+												world_->save_time = 0;
+												for (int i_ = 0; i_ < world_->blocks.size(); i_++) {
+													if (i_ <= 5400) {
+														if (world_->blocks[i_].fg != 0 and world_->blocks[i_].fg != 6 and world_->blocks[i_].fg != 8 and items[world_->blocks[i_].fg].blockType != BlockTypes::LOCK) world_->blocks[i_].fg = 0;
+														if (world_->blocks[i_].bg != 0) world_->blocks[i_].bg = 0;
+													}
+												}
+											}
+											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+												exit_(currentPeer);
+											}
+										}
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.contains("buttonClicked|nuke_worldconfirm")) {
+							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (paa != worlds.end()) {
+									World* world_ = &worlds[paa - worlds.begin()];
+									gamepacket_t p;
+									p.Insert("OnDialogRequest");
+									p.Insert("set_default_color|\nadd_textbox|`4Warning: `oNuking the world without providing enough proofs or for no reason will result in a `4permanent suspension``|\nadd_spacer|small|\nadd_button|nuke_world|`4Punish``|noflags|0|0|\nadd_spacer|small\nend_dialog|custom_view|Cancel||\n");
+									p.CreatePacket(peer);
+								}
+							}
+						}
+						else if (cch.contains("buttonClicked|nuke_world")) {
+							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								string reason = "";
+								if (paa != worlds.end()) {
+									World* world_ = &worlds[paa - worlds.begin()];
+									if (not world_->nuked) {
+										struct tm newtime;
+										time_t now = time(0);
+										localtime_s(&newtime, &now);
+										world_->nuked = true;
+										world_->n_t = "" + to_string(newtime.tm_mon + 1) + "/" + to_string(newtime.tm_mday) + "/2023 " + to_string(newtime.tm_hour) + ":" + (newtime.tm_min < 10 ? "0" + to_string(newtime.tm_min) + "" : "" + to_string(newtime.tm_min)) + ":" + to_string(newtime.tm_sec) + "";
+										world_->n_b = (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``";
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage"), p.Insert("`o>> `4" + world_->name + " `4was nuked from orbit`o. It's the only way to be sure. Play nice, everybody!");
+										p.Insert("OnTextOverlay"), p.Insert("World successfully nuked."), p.CreatePacket(peer);
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(currentPeer)->world == pInfo(peer)->world and not pInfo(currentPeer)->mod and not pInfo(currentPeer)->dev) exit_(currentPeer);
+											packet_(currentPeer, "action|play_sfx\nfile|audio/bigboom.wav\ndelayMS|0");
+											p.CreatePacket(currentPeer);
+										}
+										add_modlogs(peer, (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name), "NUKED WORLD: `#" + pInfo(peer)->world, "");
+									}
+									else {
+										world_->nuked = false, world_->n_t = "", world_->n_b = "";
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage"), p.Insert("This world is once again available to everyone!"), p.CreatePacket(peer);
+										p.Insert("OnTextOverlay"), p.Insert("This world is once again available to everyone!"), p.CreatePacket(peer);
+										add_modlogs(peer, (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name), "UNNUKED WORLD: `#" + pInfo(peer)->world, "");
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.contains("buttonClicked|remove_growconfirm")) {
+							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSkip Grow Confirmation|left|32|\nadd_label|small|`oAre you sure you wanna skip all grow from `1" + pInfo(peer)->world + "`o?|\nadd_spacer|small|\nadd_textbox|`oThis will skip grow time for seeds and providers...|\nadd_spacer|small|\nadd_textbox|`4WARNING: `oYour actions are being saved, skipping grow by mistake will get you `4PERMANENTLY`o demoted!``|\nadd_button|remove_grow|`wSkip Grow|noflags|0|0|\nadd_spacer|small\nend_dialog|custom_view|Cancel||\n");
+								p.CreatePacket(peer);
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (paa != worlds.end()) {
+									World* world_ = &worlds[paa - worlds.begin()];
+									PlayerMoving data_{};
+									data_.x = pInfo(peer)->lastwrenchx * 32 + 16, data_.y = pInfo(peer)->lastwrenchy * 32 + 16;
+									data_.packetType = 19, data_.plantingTree = 500;
+									data_.punchX = 7188, data_.punchY = pInfo(peer)->netID;
+									int32_t to_netid = pInfo(peer)->netID;
+									BYTE* raw = packPlayerMoving(&data_);
+									raw[3] = 5;
+									memcpy(raw + 8, &to_netid, 4);
+								}
+							}
+							break;
+						}
+						else if (cch.contains("buttonClicked|remove_grow")) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator paa = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (paa != worlds.end()) {
+								World* world_ = &worlds[paa - worlds.begin()];
+								for (int i = 0; i < 6000; i++) {
+									if (items[world_->blocks[i].fg].blockType == SEED) world_->blocks[i].planted = 0;
+									if (items[world_->blocks[i].fg].blockType == PROVIDER) world_->blocks[i].planted = 0;
+								}
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+									if (pInfo(currentPeer)->world == pInfo(peer)->world) exit_(currentPeer);
+								}
+							}
+							break;
+						}
 						if (cch.find("action|dialog_return\ndialog_name|dnaproc") != string::npos) {
 							int DNAID;
 							int remove = 0 - 1;
@@ -1027,6 +2557,18 @@ int main(int argc, char* argv[]) {
 										if (items[What].clothType == ClothTypes::FEET) pInfo(peer)->feet = What;
 										else if (items[What].clothType == ClothTypes::HAND) pInfo(peer)->hand = What;
 										pInfo(peer)->IDDNA1 = 0; pInfo(peer)->IDDNA2 = 0; pInfo(peer)->IDDNA3 = 0; pInfo(peer)->DNAInput = 0;
+										if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 15 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress++;
+											if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+												pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+												gamepacket_t p;
+												p.Insert("OnTalkBubble");
+												p.Insert(pInfo(peer)->netID);
+												p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+												p.Insert(0), p.Insert(0);
+												p.CreatePacket(peer);
+											}
+										}
 										gamepacket_t p, p2;
 										p.Insert("OnConsoleMessage"), p.Insert("DNA Processing complete! The DNA combined into a `2" + items[What].name + "``!"), p.CreatePacket(peer);
 										p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("DNA Processing complete! The DNA combined into a `2" + items[What].name + "``!"), p2.Insert(0), p2.Insert(0), p2.CreatePacket(peer);
@@ -1058,7 +2600,7 @@ int main(int argc, char* argv[]) {
 								}
 							}
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dnaget") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|dnaget") != string::npos) {
 							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
 							int item = atoi(explode("\n", explode("item|", cch)[1])[0].c_str());
 							int remove = -1;
@@ -1108,7 +2650,7 @@ int main(int argc, char* argv[]) {
 								}
 							}
 						}
-						if (cch.find("action|dialog_return\ndialog_name|artifact_upgrade") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|artifact_upgrade") != string::npos) {
 							/*
 							5104|Celestial Kaleidoscope
 							5106|Harmonic Chimes
@@ -1243,7 +2785,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dialog_minokawa_wings") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_minokawa_wings") != string::npos) {
 							bool Minokawa_1 = atoi(explode("\n", explode("checkbox_minokawa_wings|", cch)[1])[0].c_str()), Minokawa_2 = atoi(explode("\n", explode("checkbox_minokawa_pet|", cch)[1])[0].c_str());
 							if (Minokawa_1) pInfo(peer)->MKW = true;
 							else pInfo(peer)->MKW = false;
@@ -1252,26 +2794,124 @@ int main(int argc, char* argv[]) {
 							update_clothes(peer);
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|halloween_tasks_popup_handle\nbuttonClicked|halloween_claim_task_reward_") != string::npos) {
-							if (Halloween) {
-								int Task = atoi(cch.substr(104, cch.length() - 104).c_str()), Give = 0;
-								string Tasks = "";
-								if (Task == 1) Give = 5, Tasks = "Sacrifice Dark King's Offering"; if (Task == 2) Give = 1, Tasks = "Purchase a Dark Ticket"; if (Task == 3) Give = 2, Tasks = "Purchase a Gift of Growganoth"; if (Task == 4) Give = 10, Tasks = "Purchase Weather Machine - Dark Mountains";
-								int Total = Give;
-								gamepacket_t p, p1;
-								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p1.Insert("OnConsoleMessage");
-								if (modify_inventory(peer, 12766, Give) == 0) {
-									if (Task == 1) pInfo(peer)->Task_Darking--; if (Task == 2) pInfo(peer)->Task_Dark_Ticket--; if (Task == 3) pInfo(peer)->Task_Gift_Growganoth--; if (Task == 4) pInfo(peer)->Task_Mountain--;
-									p.Insert("You received `2" + to_string(Total) + " Halloween Candy`` from Complete " + Tasks + " quest.");
-									p1.Insert("You received `2" + to_string(Total) + " Halloween Candy`` from Complete " + Tasks + " quest.");
-									Send_Halloween_Task(peer, pInfo(peer));
+						if (cch.find("action|dialog_return\ndialog_name|billboard_edit\nbillboard_toggle|") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 4) break;
+							int billboard_active = atoi(explode("\n", t_[3])[0].c_str());
+							int billboard_price = atoi(explode("\n", t_[4])[0].c_str());
+							int peritem = atoi(explode("\n", t_[5])[0].c_str());
+							int perlock = atoi(explode("\n", t_[6])[0].c_str());
+							bool update_billboard = true;
+							if (peritem == perlock or peritem == 0 and perlock == 0 or peritem == 1 and perlock == 1) {
+								update_billboard = false;
+								gamepacket_t p, p2;
+								p.Insert("OnConsoleMessage"), p.Insert("You need to pick one pricing method - 'locks per item' or 'items per lock'"), p.CreatePacket(peer);
+								p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("You need to pick one pricing method - 'locks per item' or 'items per lock'"), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
+							}
+							else {
+								if (peritem == 1) pInfo(peer)->b_w = 1;
+								if (perlock == 1) pInfo(peer)->b_w = 0;
+							}
+							if (billboard_active == 1)pInfo(peer)->b_a = 1;
+							else pInfo(peer)->b_a = 0;
+							if (billboard_price < 0 or billboard_price > 99999) {
+								update_billboard = false;
+								gamepacket_t p, p2;
+								p.Insert("OnConsoleMessage"), p.Insert("Price can't be negative. That's beyond science."), p.CreatePacket(peer);
+								p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("Price can't be negative. That's beyond science."), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
+							}
+							else pInfo(peer)->b_p = billboard_price;
+							if (update_billboard && pInfo(peer)->b_p != 0 && pInfo(peer)->b_i != 0) {
+								gamepacket_t p(0, pInfo(peer)->netID);
+								p.Insert("OnBillboardChange"), p.Insert(pInfo(peer)->netID), p.Insert(pInfo(peer)->b_i), p.Insert(pInfo(peer)->b_a), p.Insert(pInfo(peer)->b_p), p.Insert(pInfo(peer)->b_w);
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+									p.CreatePacket(currentPeer);
 								}
-								else p.Insert("You doesn't have enough inventory to claim this reward!"), p1.Insert("You doesn't have enough inventory to claim this reward!");
-								p.Insert(0), p.Insert(1), p.CreatePacket(peer), p1.CreatePacket(peer);
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dialog_rift_cape") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|billboard_edit\nbillboard_item|") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 4) break;
+							int billboard_item = atoi(explode("\n", t_[3])[0].c_str());
+							if (billboard_item > 0 && billboard_item < items.size()) {
+								int got = 0;
+								modify_inventory(peer, billboard_item, got);
+								if (got == 0) break;
+								if (items[billboard_item].untradeable == 1 or billboard_item == 1424 or items[billboard_item].blockType == BlockTypes::LOCK or items[billboard_item].blockType == BlockTypes::FISH) {
+									gamepacket_t p, p2;
+									p.Insert("OnConsoleMessage"), p.Insert("Item can not be untradeable."), p.CreatePacket(peer);
+									p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("Item can not be untradeable."), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
+								}
+								else {
+									pInfo(peer)->b_i = billboard_item;
+									if (pInfo(peer)->b_p != 0 && pInfo(peer)->b_i != 0) {
+										gamepacket_t p(0, pInfo(peer)->netID);
+										p.Insert("OnBillboardChange"), p.Insert(pInfo(peer)->netID), p.Insert(pInfo(peer)->b_i), p.Insert(pInfo(peer)->b_a), p.Insert(pInfo(peer)->b_p), p.Insert(pInfo(peer)->b_w);
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+											p.CreatePacket(currentPeer);
+										}
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_cheat_menu") != string::npos) {
+							if (cch.find("buttonClicked|restore_default") != string::npos) {
+								Algorithm::RemovePeerAFDuration(peer);
+								pInfo(peer)->Cheat_AB = false;
+								pInfo(peer)->Cheat_AF = false;
+								pInfo(peer)->Cheat_Speed = false;
+								pInfo(peer)->Cheat_Jump = false;
+								pInfo(peer)->Cheat_HideOther = false;
+								pInfo(peer)->Cheat_HideChat = false;
+								pInfo(peer)->Cheat_AF_PunchX = 0;
+								pInfo(peer)->Cheat_AF_PunchY = 0;
+								pInfo(peer)->Cheat_AF_PlantingTree = 0;
+								pInfo(peer)->Cheat_AF_isRunning = false;
+								pInfo(peer)->isFacingLeft = false;
+								pInfo(peer)->Cheat_FastPull = false;
+								pInfo(peer)->Cheat_FastDrop = false;
+								pInfo(peer)->Cheat_FastTrash = false;
+								pInfo(peer)->Cheat_AutoCollect = false;
+								update_clothes(peer);
+							}
+							else {
+								try {
+									pInfo(peer)->Cheat_AB = atoi(explode("\n", explode("checkbox_cheat_antibounce|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_AF = atoi(explode("\n", explode("checkbox_cheat_autofarm|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_HideOther = atoi(explode("\n", explode("checkbox_cheat_hideother|", cch)[1])[0].c_str()) == 1 ? true : false;
+									if (pInfo(peer)->Cheat_HideOther) {
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world or pInfo(currentPeer)->netID == pInfo(peer)->netID) continue;
+											Algorithm::avatar_remove(peer, pInfo(currentPeer)->netID);
+										}
+									}
+									pInfo(peer)->Cheat_HideChat = atoi(explode("\n", explode("checkbox_cheat_hidechat|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_Speed = atoi(explode("\n", explode("checkbox_cheat_speed|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_Jump = atoi(explode("\n", explode("checkbox_cheat_jump|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_AutoCollect = atoi(explode("\n", explode("checkbox_cheat_autocollect|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_FastPull = atoi(explode("\n", explode("checkbox_cheat_fastpull|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_FastDrop = atoi(explode("\n", explode("checkbox_cheat_fastdrop|", cch)[1])[0].c_str()) == 1 ? true : false;
+									pInfo(peer)->Cheat_FastTrash = atoi(explode("\n", explode("checkbox_cheat_fasttrash|", cch)[1])[0].c_str()) == 1 ? true : false;
+									if (not pInfo(peer)->Cheat_AF and pInfo(peer)->Cheat_AF_PunchX != 0 and pInfo(peer)->Cheat_AF_PunchY != 0 and pInfo(peer)->Cheat_AF_PlantingTree != 0) {
+										Algorithm::RemovePeerAFDuration(peer);
+										pInfo(peer)->Cheat_AF_PunchX = 0;
+										pInfo(peer)->Cheat_AF_PunchY = 0;
+										pInfo(peer)->Cheat_AF_PlantingTree = 0;
+										pInfo(peer)->Cheat_AF_isRunning = false;
+										pInfo(peer)->isFacingLeft = false;
+									}
+									update_clothes(peer);
+								}
+								catch (...) {
+									break;
+								}
+							}
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_rift_cape") != string::npos) {
 							if (cch.find("buttonClicked|button_manual") != string::npos) {
 								SendDialogRiftCape(peer, true);
 								break;
@@ -1296,6 +2936,7 @@ int main(int argc, char* argv[]) {
 								try {
 									pInfo(peer)->Time_Change = atoi(explode("\n", explode("checkbox_time_cycle|", cch)[1])[0].c_str()) == 1 ? true : false;
 									if (!is_number(explode("\n", explode("text_input_time_cycle|", cch)[1])[0])) break;
+									if (atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str()) < 1) break;
 									pInfo(peer)->Cycle_Time = atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str());
 									{ // Cape_1
 										pInfo(peer)->Cape_Collar_0 = atoi(explode("\n", explode("checkbox_cape_collar0|", cch)[1])[0].c_str()) == 1 ? true : false;
@@ -1405,7 +3046,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dialog_cernuous_mask") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_cernuous_mask") != string::npos) {
 							if (cch.find("buttonClicked|restore_default") != string::npos) {
 								pInfo(peer)->Aura_Season = 2;
 								pInfo(peer)->Trail_Season = 2;
@@ -1420,7 +3061,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|sessionlength_edit") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|sessionlength_edit") != string::npos) {
 							try {
 								string name_ = pInfo(peer)->world;
 								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
@@ -1449,7 +3090,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|worldcategory") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|worldcategory") != string::npos) {
 							string Cat = "None";
 							if (cch.find("buttonClicked|cat10") != string::npos) {
 								Cat = "Storage";
@@ -1603,7 +3244,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|bannerbandolier") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|bannerbandolier") != string::npos) {
 							if (cch.find("buttonClicked|patternpicker") != string::npos) {
 								string dialog = "";
 								if (pInfo(peer)->Banner_Flag == 0) dialog += "set_default_color|`o\nadd_label_with_icon|big|`wBanner Bandolier``|left|5838|";
@@ -1649,7 +3290,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|magic_compass") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|magic_compass") != string::npos) {
 							if (cch.find("buttonClicked|clear_item") != string::npos) {
 								pInfo(peer)->Magnet_Item = 0;
 								update_clothes(peer);
@@ -1670,7 +3311,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dialog_rift_wings") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_rift_wings") != string::npos) {
 							if (cch.find("buttonClicked|button_manual") != string::npos) {
 								SendDialogRiftWings(peer, true);
 								break;
@@ -1695,6 +3336,7 @@ int main(int argc, char* argv[]) {
 								try {
 									pInfo(peer)->Wing_Time_Change = atoi(explode("\n", explode("checkbox_time_cycle|", cch)[1])[0].c_str()) == 1 ? true : false;
 									if (!is_number(explode("\n", explode("text_input_time_cycle|", cch)[1])[0])) break;
+									if (atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str()) < 1) break;
 									pInfo(peer)->Wing_Cycle_Time = atoi(explode("\n", explode("text_input_time_cycle|", cch)[1])[0].c_str());
 									{ // Wing_1
 										{
@@ -1858,7 +3500,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|dialog_infinity_crown") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|dialog_infinity_crown") != string::npos) {
 							if (cch.find("buttonClicked|button_manual") != string::npos) {
 								SendDialogInfinityCrown(peer, true);
 								break;
@@ -2017,74 +3659,7 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|wfcalendar_reward_list_dialog") != string::npos) {
-							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
-							if (cch.find("buttonClicked|goto_maindialog") != string::npos) {
-								string name_ = pInfo(peer)->world;
-								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-								if (p != worlds.end()) {
-									World* world_ = &worlds[p - worlds.begin()];
-									WorldBlock* block_ = &world_->blocks[x_ + (y_ * 100)];
-									if (world_->owner_name == pInfo(peer)->tankIDName || pInfo(peer)->dev || guild_access(peer, world_->guild_id) || find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) {
-										string Day = "";
-										Day += "\nadd_button_with_icon|calendarSystem_1|`$Day 1``|" + string(block_->pr >= 1 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_2|`$Day 2``|" + string(block_->pr >= 2 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_3|`$Day 3``|" + string(block_->pr >= 3 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_4|`$Day 4``|" + string(block_->pr >= 4 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_5|`$Day 5``|" + string(block_->pr >= 5 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_6|`$Day 6``|" + string(block_->pr >= 6 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_7|`$Day 7``|" + string(block_->pr >= 7 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_8|`$Day 8``|" + string(block_->pr >= 8 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_9|`$Day 9``|" + string(block_->pr >= 9 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_10|`$Day 10``|" + string(block_->pr >= 10 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_11|`$Day 11``|" + string(block_->pr >= 11 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_12|`$Day 12``|" + string(block_->pr >= 12 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_13|`$Day 13``|" + string(block_->pr >= 13 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_14|`$Day 14``|" + string(block_->pr >= 14 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_15|`$Day 15``|" + string(block_->pr >= 15 ? "noflags|6292||" : "frame|9202||");
-										Day += "\nadd_button_with_icon|calendarSystem_16|`$Day 16``|" + string(block_->pr >= 16 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_17|`$Day 17``|" + string(block_->pr >= 17 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_18|`$Day 18``|" + string(block_->pr >= 18 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_19|`$Day 19``|" + string(block_->pr >= 19 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_20|`$Day 20``|" + string(block_->pr >= 20 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_21|`$Day 21``|" + string(block_->pr >= 21 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_22|`$Day 22``|" + string(block_->pr >= 22 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_23|`$Day 23``|" + string(block_->pr >= 23 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_24|`$Day 24``|" + string(block_->pr >= 24 ? "noflags|6292||" : "frame|10486||");
-										Day += "\nadd_button_with_icon|calendarSystem_25|`$Day 25``|" + string(block_->pr >= 25 ? "noflags|6292||" : "frame|9202||");
-										gamepacket_t p(500);
-										p.Insert("OnDialogRequest");
-										p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wWinterfest Calendar - 2022``|left|12986|\nadd_textbox|Tap on a button below to view the `2rewards`` available on that day.|left|\nadd_spacer|small|\ntext_scaling_string|Defibrillators|" + Day + "\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nembed_data|tilex|" + to_string(x_) + "\nembed_data|tiley|" + to_string(y_) + "\nadd_button|cancel|Close|noflags|0|0|\nend_dialog|wfcalendar_dailyrewards|||\nadd_quick_exit|\n");
-										p.CreatePacket(peer);
-									}
-								}
-							}
-							break;
-						}
-						if (cch.find("action|dialog_return\ndialog_name|wfcalendar_dailyrewards") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 7) break;
-							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
-							if (cch.find("buttonClicked|calendarSystem_") != string::npos) {
-								string test = explode("\n", t_[7])[0].c_str();
-								replace_str(test, "calendarSystem_", "");
-								int System = atoi(test.c_str());
-								string Prizes = "";
-								if (System == 1 || System == 5 || System == 9 || System == 13 || System == 18 || System == 22) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wCrystal of Hoa``|left|11244|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wCrystal Block Seed``|left|263|\nadd_label_with_icon|small|`wEzio's Armguards``|left|7088|\nadd_label_with_icon|small|`wEzio's Boots``|left|7094|\nadd_label_with_icon|small|`wFrozen Fountain``|left|11520|\nadd_label_with_icon|small|`wLuxurious Wall Clock``|left|7864|\nadd_label_with_icon|small|`wDroid Pet``|left|8976|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wSnowy Tree Block``|left|10486|\nadd_label_with_icon|small|`wGavle Goat``|left|10444|\nadd_label_with_icon|small|`wFuturistic Sunglasses``|left|11202|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wNutcracker Boots``|left|7498|\nadd_label_with_icon|small|`wSnowy Fence``|left|10488|\nadd_label_with_icon|small|`wKitty Block``|left|8280|\nadd_label_with_icon|small|`wDoggy Block``|left|8278|\nadd_spacer|small|";
-								if (System == 2 || System == 6 || System == 10 || System == 14 || System == 19 || System == 23) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wZodiac Wings``|left|10054|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wSnowtopian``|left|9202|\nadd_label_with_icon|small|`wGlowing Nose``|left|1384|\nadd_label_with_icon|small|`wConveyor Block``|left|11192|\nadd_label_with_icon|small|`wPuffy Blue Jacket``|left|5446|\nadd_label_with_icon|small|`wChristmas Pudding Block``|left|11514|\nadd_label_with_icon|small|`wGem Hair``|left|8480|\nadd_label_with_icon|small|`wCaduceaxe``|left|8554|\nadd_label_with_icon|small|`wNutcracker Pants``|left|7496|\nadd_label_with_icon|small|`wEzio's Beard``|left|7090|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wVile Vial - Ecto-Bones``|left|8546|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wSnowy Fence``|left|10488|\nadd_label_with_icon|small|`wChocolate Block (x5)``|left|2564|\nadd_label_with_icon|small|`wWinter Gift (x5)``|left|1360|\nadd_spacer|small|";
-								if (System == 3 || System == 7 || System == 11 || System == 16 || System == 20 || System == 24) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wZodiac Ring``|left|11158|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wNutcracker Hat``|left|7490|\nadd_label_with_icon|small|`wSurgWorld Blast``|left|8556|\nadd_label_with_icon|small|`wPigeon``|left|10258|\nadd_label_with_icon|small|`wFrozen Fountain``|left|11520|\nadd_label_with_icon|small|`wPet Trainer Whistle``|left|3676|\nadd_label_with_icon|small|`wEzio's Trousers``|left|7086|\nadd_label_with_icon|small|`wEzio's Vest``|left|7082|\nadd_label_with_icon|small|`wWaist Tied Sweater - Green``|left|10036|\nadd_label_with_icon|small|`wWaist Tied Sweater - Yellow``|left|10042|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wFuturistic Sunglasses``|left|11202|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_label_with_icon|small|`wPuffy Blue Jacket``|left|5446|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wGavle Goat``|left|10444|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_spacer|small|";
-								if (System == 4 || System == 8 || System == 12 || System == 17 || System == 21) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wLightning Horns``|left|12302|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wSnowtopian``|left|9202|\nadd_label_with_icon|small|`wStar Tool Droid``|left|6414|\nadd_label_with_icon|small|`wEzio's Hood``|left|7080|\nadd_label_with_icon|small|`wSnowfrost's Suit``|left|7422|\nadd_label_with_icon|small|`wPrehistoric Dragon Claw``|left|7758|\nadd_label_with_icon|small|`wRobot Legs``|left|6384|\nadd_label_with_icon|small|`wAxolotl Slippers``|left|10032|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wChristmas Pudding Block``|left|11514|\nadd_label_with_icon|small|`wConveyor Block``|left|11192|\nadd_label_with_icon|small|`wSnowball (x10)``|left|1368|\nadd_label_with_icon|small|`wTwo Turtle Doves``|left|12918|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wS'mores Block (x2)``|left|5382|\nadd_label_with_icon|small|`wLumberjack Coat - Midnight``|left|5434|\nadd_label_with_icon|small|`wLumberjack Coat - Navy``|left|5432|\nadd_label_with_icon|small|`wLumberjack Coat - Olive``|left|5430|\nadd_label_with_icon|small|`wLumberjack Coat - Scarlet``|left|5428|\nadd_label_with_icon|small|`wWinter Gift (x5)``|left|1360|\nadd_spacer|small|";
-								if (System == 15) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wCute Mutant Plonky``|left|11080|\nadd_label_with_icon|small|`wCute Mutant Boogle``|left|11082|\nadd_label_with_icon|small|`wEzio's Hair``|left|7092|\nadd_label_with_icon|small|`wPegasus Lance``|left|10922|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wWinter Swept Hair``|left|10440|\nadd_label_with_icon|small|`wCrystal Block Seed``|left|263|\nadd_label_with_icon|small|`wCute Mutant Wonky``|left|11078|\nadd_label_with_icon|small|`wSad Snowfrost's Mask``|left|11500|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wRiding Eagle Owl``|left|9184|\nadd_label_with_icon|small|`wHay Cart``|left|7096|\nadd_label_with_icon|small|`wStar Dragon Claw``|left|7760|\nadd_label_with_icon|small|`wWaist Tied Sweater - Red``|left|10038|\nadd_label_with_icon|small|`wSnowfrost's Mask``|left|7420|\nadd_label_with_icon|small|`wWaist Tied Sweater - Blue``|left|10040|\nadd_label_with_icon|small|`wSnowfrost's Top Hat``|left|7418|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wSpring-Loaded Fists``|left|8960|\nadd_label_with_icon|small|`wExo Suit Helmet``|left|9692|\nadd_label_with_icon|small|`wSpeeder``|left|8948|\nadd_label_with_icon|small|`wFlower Headband``|left|8722|\nadd_spacer|small|";
-								if (System == 25) Prizes = "\nadd_textbox|`5Epic``|left|\nadd_label_with_icon|small|`wThe Beast with a Thousand Eyes Mask``|left|8358|\nadd_label_with_icon|small|`wBeowulf's Blade``|left|11084|\nadd_label_with_icon|small|`wGiant Eye Head``|left|8372|\nadd_spacer|small|\nadd_textbox|`1Rare``|left|\nadd_label_with_icon|small|`wRadical Rider``|left|10878|\nadd_label_with_icon|small|`wFrosty Wings``|left|9182|\nadd_label_with_icon|small|`wCandy Cane Cruiser``|left|11468|\nadd_spacer|small|\nadd_textbox|`6Uncommon``|left|\nadd_label_with_icon|small|`wSilverstar Bow``|left|5456|\nadd_label_with_icon|small|`wEzio's Cape``|left|7084|\nadd_label_with_icon|small|`wSnowfrost's Candy Cane Blade``|left|7424|\nadd_label_with_icon|small|`wSnowflake Eyes``|left|7396|\nadd_label_with_icon|small|`wWinter Light Launcher``|left|10442|\nadd_spacer|small|\nadd_textbox|Common|left|\nadd_label_with_icon|small|`wDouble Growsaber``|left|812|\nadd_label_with_icon|small|`wRed Growsaber``|left|802|\nadd_label_with_icon|small|`wGrowboard``|left|1758|\nadd_label_with_icon|small|`wStrange Eyes``|left|9370|\nadd_label_with_icon|small|`wDragon Throne``|left|7738|\nadd_label_with_icon|small|`wRiding Chicken``|left|5018|\nadd_label_with_icon|small|`wHowly Hat``|left|8468|\nadd_label_with_icon|small|`wSurgWorld Blast``|left|8556|\nadd_label_with_icon|small|`wGourmet Dragon Claw``|left|7752|\nadd_label_with_icon|small|`wCupcake Hat``|left|8474|\nadd_spacer|small|";
-								gamepacket_t p(500);
-								p.Insert("OnDialogRequest");
-								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wDay " + to_string(System) + " Rewards``|left|12986|\nadd_spacer|small|\nadd_textbox|" + string(System == 15 || System == 25 ? "Merry Winterfest and a happy new reward. You have a chance of obtaining the following items:" : "You have a chance of obtaining the following items:") + "|left|\nadd_spacer|small|" + Prizes + "\nembed_data|tilex|" + to_string(x_) + "\nembed_data|tiley|" + to_string(y_) + "\nadd_button|goto_maindialog|Thanks for the info!|0|0|\nend_dialog|wfcalendar_reward_list_dialog|||\nadd_quick_exit|\n");
-								p.CreatePacket(peer);
-								break;
-							}
-							break;
-						}
-						if (cch.find("action|dialog_return\ndialog_name|xenonite_edit") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|xenonite_edit") != string::npos) {
 							int x_ = atoi(explode("\n", explode("tilex|", cch)[1])[0].c_str()), y_ = atoi(explode("\n", explode("tiley|", cch)[1])[0].c_str());
 							try {
 								string name_ = pInfo(peer)->world;
@@ -2156,97 +3731,365 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|punish_player") != string::npos) {
-							string result = cch.substr(74, cch.length() - 74);
-							vector<string> hasil = split_string_by_newline(result);
-							vector<string> days = explode("|", hasil[0]);
-							vector<string> hours = explode("|", hasil[1]);
-							vector<string> mins = explode("|", hasil[2]);
-							vector<string> reason = explode("|", hasil[3]);
-							vector<string> mute = explode("|", hasil[4]);
-							vector<string> curse = explode("|", hasil[5]);
-							vector<string> ban = explode("|", hasil[6]);
-							if (not onlyDigit(days[1]) or not onlyDigit(hours[1]) or not onlyDigit(mins[1])) break;
-							int Days = atoi(days[1].c_str());
-							int Hours = atoi(hours[1].c_str());
-							int Mins = atoi(mins[1].c_str());
-							string Reason = reason[1];
-							if (Reason.length() >= 180) break;
-							if (Reason.length() <= 0) Reason = "No Reason Provided";
-							int isMute = atoi(mute[1].c_str());
-							int isCurse = atoi(curse[1].c_str());
-							int isBan = atoi(ban[1].c_str());
-							long long int banTime = Days * 86400 + (Hours * 3600) + (Mins * 60);
-							if (banTime == 0) break;
-							if (isMute == 1 and isCurse == 0 and isBan == 0) {
-								if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
-									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu" || pInfo(peer)->superdev) break;
+						else if (cch.find("action|dialog_return\ndialog_name|punish_view\n") != string::npos) {
+							if (pInfo(peer)->mod == 1 || pInfo(peer)->supermod == 1 || pInfo(peer)->dev == 1 || pInfo(peer)->superdev == 1) {
+								if (cch.find("buttonClicked|disconnect") != string::npos) {
 									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
 										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-											string p_username = ("**" + pInfo(currentPeer)->tankIDName + "** (IP: `" + pInfo(currentPeer)->ip + "`) was muted!");
-											string p_reason = ("> " + Reason);
-											string p_duration = (detailSecond(banTime));
-											string p_punisher = (pInfo(peer)->tankIDName);
-											send_Punishment(p_username, p_reason, p_punisher, p_duration);
-											add_mute(currentPeer, banTime, Reason, pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
+											//if (pInfo(currentPeer)->world != "") exit_(currentPeer, true);
+											enet_peer_disconnect_later(currentPeer, 2);
+											Algorithm::send_overlay(peer, pInfo(currentPeer)->tankIDName + " Disconnected");
 										}
 									}
 								}
-								break;
-							}
-							else if (isMute == 0 and isCurse == 1 and isBan == 0) {
-								if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
-									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu" || pInfo(peer)->superdev) break;
+								else if (cch.find("buttonClicked|oan_") != string::npos) {
+									if (pInfo(peer)->dev || pInfo(peer)->mod) {
+										try {
+											string username = "";
+											if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") break;
+											long long int seconds = atoi(cch.substr(63, cch.length() - 63).c_str());
+											string reason = cch.substr(72 + to_string(seconds).length(), cch.length() - 72 + to_string(seconds).length()).c_str();
+											replace_str(reason, "\n", "");
+											writelog(pInfo(peer)->tankIDName + " " + (seconds == 0 ? "unbanned" : "banned") + " (" + reason + ") - " + pInfo(peer)->last_wrenched);
+											if (reason.length() <= 0) {
+												Algorithm::send_overlay(peer, "Please provide reason");
+												break;
+											}
+											username = pInfo(peer)->last_wrenched;
+											ifstream ifs("database/players/" + username + "_.json");
+											int isBanned = 0, ban_second = 0, ban_time = 0, seconds2 = 0, userid = 0;
+											if (ifs.is_open()) {
+												json j;
+												ifs >> j;
+												isBanned = j["b_t"].get<int>();
+												userid = j["userID"].get<int>();
+												username = j["name"].get<string>();
+											}
+											if (isBanned != 0 && pInfo(peer)->dev || isBanned != 0 && pInfo(peer)->supermod) {
+												ifstream in("database/players/" + username + "_.json");
+												json infile = json::parse(in);
+												infile["b_t"] = 0;
+												infile["b_s"] = 0;
+												infile["b_r"] = "";
+												ofstream out("database/players/" + username + "_.json");
+												out << setw(4) << infile << endl;
+												in.close();
+												out.close();
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`o>> Success unbanned `5" + username);
+												p.CreatePacket(peer);
+												send_server_logs(pInfo(peer)->tankIDName, "(#" + to_string(pInfo(peer)->uid) + ") unbanned " + username + " (#" + to_string(userid) + ")");
+												Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") unbanned " + username + " (#" + to_string(userid) + ")");
+											}
+											else {
+												ifstream in("database/players/" + username + "_.json");
+												json infile = json::parse(in);
+												if (seconds == 729) infile["b_s"] = (6.307e+7 * 1000);
+												else if (seconds == 31) infile["b_s"] = (2.678e+6 * 1000);
+												else infile["b_s"] = (seconds * 1000);
+												infile["b_r"] = reason;
+												infile["b_b"] = pInfo(peer)->modName;
+												infile["b_t"] = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+												ofstream out("database/players/" + username + "_.json");
+												out << setw(4) << infile << endl;
+												in.close();
+												out.close();
+												if (seconds == 729) seconds = 6.307e+7;
+												if (seconds == 31) seconds = 2.678e+6;
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`#**`` `$The Ancient Ones`` have `4banned`` " + username + "`` `#**`` (`4/rules`` to see the rules!)");
+												for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+													if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+													p.CreatePacket(currentPeer);
+												}
+												Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + username + " (#" + to_string(userid) + ")");
+												send_server_logs(pInfo(peer)->tankIDName, "(#" + to_string(pInfo(peer)->uid) + ") banned " + username + " reason " + reason);
+											}
+										}
+										catch (exception& e) {
+											hoshi_warn(e.what());
+											break;
+										}
+									}
+									break;
+								}
+								else if (cch.find("buttonClicked|super_panel") != string::npos) {
+									Algorithm::send_bubble(peer, pInfo(peer)->netID, "Only Ritshu can use this panel");
+									break;
+								}
+								else if (cch.find("buttonClicked|tape1hour") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
 									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
 										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-											string p_username = ("**" + pInfo(currentPeer)->tankIDName + "** (IP: `" + pInfo(currentPeer)->ip + "`) was cursed!");
-											string p_reason = ("> " + Reason);
-											string p_duration = (detailSecond(banTime));
-											string p_punisher = (pInfo(peer)->tankIDName);
-											send_Punishment(p_username, p_reason, p_punisher, p_duration);
-											add_curse(currentPeer, banTime, Reason, pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_mute(currentPeer, 3600, "Profanity", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") muted " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used tape (profanity) to " + pInfo(currentPeer)->tankIDName);
 										}
 									}
 								}
-								break;
-							}
-							else if (isMute == 0 and isCurse == 0 and isBan == 1) {
-								if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
-									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu" || pInfo(peer)->superdev) break;
+								else if (cch.find("buttonClicked|curse12hour") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
 									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
 										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-											string p_username = ("**" + pInfo(currentPeer)->tankIDName + "** (IP: `" + pInfo(currentPeer)->ip + "`) was banned!");
-											string p_reason = ("> " + Reason);
-											string p_duration = (detailSecond(banTime));
-											string p_punisher = (pInfo(peer)->tankIDName);
-											send_Punishment(p_username, p_reason, p_punisher, p_duration);
-											add_ban(currentPeer, banTime, Reason, pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_curse(currentPeer, 43200, "Scamming", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") cursed " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used curse (sanction for scamming) to " + pInfo(currentPeer)->tankIDName);
 										}
 									}
 								}
+								else if (cch.find("buttonClicked|dgh1d") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_ban(currentPeer, 86400, "No Reason Provided", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used ban (type: 1 day DGH) to " + pInfo(currentPeer)->tankIDName);
+										}
+									}
+								}
+								else if (cch.find("buttonClicked|dgh1w") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_ban(currentPeer, 604800, "No Reason Provided", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used ban (type: 1 week DGH) to " + pInfo(currentPeer)->tankIDName);
+										}
+									}
+								}
+								else if (cch.find("buttonClicked|dgh2w") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_ban(currentPeer, 1210000, "No Reason Provided", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used ban (type: 2 week DGH) to " + pInfo(currentPeer)->tankIDName);
+										}
+									}
+								}
+								else if (cch.find("buttonClicked|dgh4w") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_ban(currentPeer, 2592000, "Usage of 3rd Party Program", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used ban (type: 4 week DGH) to " + pInfo(currentPeer)->tankIDName);
+										}
+									}
+								}
+								else if (cch.find("buttonClicked|autoban") != string::npos) {
+									if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("It seems you have lower adminLevel than the user you try to punish.");
+										p.CreatePacket(peer);
+										break;
+									}
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+											if (pInfo(peer)->mod and not pInfo(peer)->dev and pInfo(currentPeer)->superdev or pInfo(currentPeer)->supermod or pInfo(currentPeer)->dev) break;
+											add_ban(currentPeer, 5184000, "Usage of 3rd Party Program", "System");
+											Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											send_user_logs(pInfo(peer)->tankIDName, "used Auto-Ban to " + pInfo(currentPeer)->tankIDName);
+										}
+									}
+								}
+								else if (cch.find("buttonClicked|ipban") != string::npos) {
+									if (pInfo(peer)->supermod == 1 || pInfo(peer)->dev == 1) {
+										bool isOnline = false;
+										if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") break;
+										string his_ip = "";
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+												isOnline = true;
+												his_ip = pInfo(currentPeer)->ip;
+												add_ban(currentPeer, 6.307e+7, "Usage of 3rd Party Program", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+												writelog(pInfo(peer)->tankIDName + " IP Banned (" + pInfo(currentPeer)->ip + ") - " + pInfo(currentPeer)->tankIDName);
+												add_ipban(currentPeer);
+												add_ridban(currentPeer);
+												Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") device banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+											}
+										}
+										if (not his_ip.empty()) {
+											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+												if (pInfo(currentPeer)->ip == his_ip) {
+													isOnline = true;
+													add_ban(currentPeer, 6.307e+7, "Usage of 3rd Party Program", (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "``");
+													Algorithm::log_text("PunishLog", "[" + Algorithm::get_time() + "] " + pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") device banned " + pInfo(currentPeer)->tankIDName + " (#" + to_string(pInfo(currentPeer)->uid) + ")");
+												}
+											}
+										}
+										if (not isOnline) {
+											try {
+												string username = to_lower(pInfo(peer)->last_wrenched);
+												if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") break;
+												ifstream ifs("database/players/" + username + "_.json");
+												string hisIP = "", hisRID = "";
+												if (ifs.is_open()) {
+													json j;
+													ifs >> j;
+													hisIP = j["ip"].get<string>();
+													hisRID = j["rid"].get<string>();
+												}
+												{
+													vector<string> ipbans;
+													ifstream ifs("database/ipban.json");
+													if (ifs.is_open()) {
+														json j;
+														ifs >> j;
+														vector<string> ipbans2 = j["ip"];
+														ipbans = ipbans2;
+													}
+													ipbans.push_back(hisIP);
+													ofstream o("database/ipban.json");
+													if (!o.is_open()) break;
+													json j;
+													j["ip"] = ipbans;
+													o << j << endl;
+												}
+												{
+													vector<string> bans;
+													ifstream ifs("database/ridban.json");
+													if (ifs.is_open()) {
+														json j;
+														ifs >> j;
+														vector<string> bans2 = j["rid"];
+														bans = bans2;
+													}
+													bans.push_back(hisRID);
+													ofstream o("database/ridban.json");
+													if (!o.is_open()) break;
+													json j;
+													j["rid"] = bans;
+													o << j << endl;
+												}
+												ifstream in("database/players/" + username + "_.json");
+												json infile = json::parse(in);
+												infile["b_s"] = (6.307e+7 * 1000);
+												infile["b_r"] = "Usage of 3rd Party Program";
+												infile["b_b"] = pInfo(peer)->modName;
+												infile["b_t"] = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+												ofstream out("database/players/" + username + "_.json");
+												out << setw(4) << infile << endl;
+												in.close();
+												out.close();
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("`#**`` `$The Ancient Ones`` have `4Banned`` " + username + "`` `#**`` (`4/rules`` to see the rules!)");
+												for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+													if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+													p.CreatePacket(currentPeer);
+												}
+												writelog(pInfo(peer)->tankIDName + " IP Banned (" + hisIP + ") - " + username);
+											}
+											catch (exception& e) {
+												hoshi_warn(e.what());
+											}
+										}
+									}
+									break;
+								}
+								else if (cch.find("buttonClicked|view_inventory") != string::npos) {
+									if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
+												string recently_visited = "";
+												for (auto it = pInfo(currentPeer)->last_visited_worlds.rbegin(); it != pInfo(currentPeer)->last_visited_worlds.rend(); ++it) {
+													string a_ = *it + (next(it) != pInfo(currentPeer)->last_visited_worlds.rend() ? "``, " : "``");
+													recently_visited += "`#" + a_;
+												}
+												string inventory = "";
+												int thats5 = 0, thatsadded = 0;
+												for (int i_ = 0; i_ < pInfo(currentPeer)->inv.size(); i_++) {
+													if (pInfo(currentPeer)->inv[i_].id == 0 || pInfo(currentPeer)->inv[i_].id == 18 || pInfo(currentPeer)->inv[i_].id == 32) continue;
+													thats5++;
+													thatsadded = 0;
+													inventory += "\nadd_button_with_icon|" + (pInfo(peer)->dev == 1 ? to_string(pInfo(currentPeer)->inv[i_].id) : "") + "||staticBlueFrame|" + to_string(pInfo(currentPeer)->inv[i_].id) + "|" + to_string(pInfo(currentPeer)->inv[i_].count) + "|";
+													if (thats5 >= 6) {
+														thats5 = 0;
+														thatsadded = 1;
+														inventory += "\nadd_button_with_icon||END_LIST|noflags|0||";
+													}
+												}
+												gamepacket_t p;
+												p.Insert("OnDialogRequest");
+												p.Insert("set_default_color|`o\nadd_label_with_icon|small|`0Inventory of " + pInfo(currentPeer)->name_color + pInfo(currentPeer)->tankIDName + "``'s (" + pInfo(currentPeer)->requestedName + ") - #" + to_string(pInfo(currentPeer)->netID) + "|left|3802|\nadd_spacer|small|\nadd_textbox|Last visited: " + recently_visited + "|\nadd_textbox|Gems: `w" + setGems(pInfo(currentPeer)->gems) + "|\nadd_textbox|Backpack slots: `w" + to_string(pInfo(currentPeer)->inv.size() - 1) + "|" + inventory + "" + (thatsadded == 1 ? "" : "\nadd_button_with_icon||END_LIST|noflags|0||") + "|\nend_dialog|view_inventory|Continue||\nadd_quick_exit|");
+												p.CreatePacket(peer);
+											}
+										}
+									}
+									break;
+								}
+								else if (cch.find("buttonClicked|warp_to_") != string::npos) {
+									if (pInfo(peer)->last_world_enter + 500 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+										pInfo(peer)->last_world_enter = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+										string world_name = cch.substr(67, cch.length() - 67);
+										vector<string> test = split_string_by_newline(world_name);
+										join_world(peer, test[0]);
+									}
+									break;
+								}
 								break;
-							}
-							else {
-								gamepacket_t p;
-								p.Insert("OnTextOverlay");
-								p.Insert("Please choose only one option within Mute/Curse/Ban.");
-								p.CreatePacket(peer);
-								break;
-							}
-						}
-						if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|warp_to_") != string::npos) {
-							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
-								string world_name = cch.substr(67, cch.length() - 67);
-								vector<string> test = split_string_by_newline(world_name);
-								join_world(peer, test[0]);
 							}
 							break;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|blast\nname|") != string::npos) {
-							if (pInfo(peer)->lastchoosenitem == 830 || pInfo(peer)->lastchoosenitem == 9164 || pInfo(peer)->lastchoosenitem == 9602 || pInfo(peer)->lastchoosenitem == 942 || pInfo(peer)->lastchoosenitem == 1060 || pInfo(peer)->lastchoosenitem == 1136 || pInfo(peer)->lastchoosenitem == 1402 || pInfo(peer)->lastchoosenitem == 9582 || pInfo(peer)->lastchoosenitem == 1532 || pInfo(peer)->lastchoosenitem == 3562 || pInfo(peer)->lastchoosenitem == 4774 || pInfo(peer)->lastchoosenitem == 7380 || pInfo(peer)->lastchoosenitem == 7588 || pInfo(peer)->lastchoosenitem == 8556) {
+							if (pInfo(peer)->lastchoosenitem == 830 || pInfo(peer)->lastchoosenitem == 9164 || pInfo(peer)->lastchoosenitem == 9602 || pInfo(peer)->lastchoosenitem == 942 || pInfo(peer)->lastchoosenitem == 1060 || pInfo(peer)->lastchoosenitem == 1136 || pInfo(peer)->lastchoosenitem == 1402 || pInfo(peer)->lastchoosenitem == 9582 || pInfo(peer)->lastchoosenitem == 1532 || pInfo(peer)->lastchoosenitem == 3562 || pInfo(peer)->lastchoosenitem == 4774 || pInfo(peer)->lastchoosenitem == 7380 || pInfo(peer)->lastchoosenitem == 7588 || pInfo(peer)->lastchoosenitem == 9488 || pInfo(peer)->lastchoosenitem == 8556) {
 								int blast = pInfo(peer)->lastchoosenitem, got = 0;
 								modify_inventory(peer, blast, got);
 								if (got == 0) break;
@@ -2271,44 +4114,16 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch == "action|dialog_return\ndialog_name|world_spray\n") {
-							int got = 0;
-							modify_inventory(peer, 12600, got);
-							if (got == 0) break;
-							string name = pInfo(peer)->world;
-							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name](const World& a) { return a.name == name; });
-							if (p != worlds.end()) {
-								World* world = &worlds[p - worlds.begin()];
-								if (world->owner_name == pInfo(peer)->tankIDName || pInfo(peer)->superdev) {
-									int remove = -1;
-									modify_inventory(peer, 12600, remove);
-									for (int i_ = 0; i_ < world->blocks.size(); i_++) if (world->blocks[i_].fg % 2 != 0)  world->blocks[i_].planted = _int64(2.592e+6);
-									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-										if (pInfo(currentPeer)->world == name) {
-											int x = pInfo(currentPeer)->x, y = pInfo(currentPeer)->y;
-											exit_(currentPeer, true);
-											join_world(currentPeer, name);
-										}
-									}
-								}
-								else {
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage"), p.Insert("`wYou must own the world!``"), p.CreatePacket(peer);
-								}
-							}
-							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|consumehgem\nitemID|7784|\ncount|") != string::npos) {
+						else if (cch.find("action|dialog_return\ndialog_name|consumehgem\nitemID|5142|\ncount|") != string::npos) {
 							string itemCount = cch.substr(64, cch.length() - 64).c_str();
 							int intItemCount = atoi(itemCount.c_str());
+							if (intItemCount <= 0) break;
 							int got = 0;
-							modify_inventory(peer, 7784, got);
+							int remove = -intItemCount;
+							modify_inventory(peer, 5142, got);
 							if (got == 0) break;
-							if (intItemCount >= 1) {
-								int remove = -intItemCount;
-								modify_inventory(peer, 7784, remove);
-								int total = intItemCount * 500;
+							if (modify_inventory(peer, 5142, remove) == 0) {
+								int total = intItemCount * 1000;
 								pInfo(peer)->gems += total;
 								{
 									gamepacket_t p;
@@ -2323,9 +4138,6 @@ int main(int argc, char* argv[]) {
 								}
 							}
 							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|find_item\nitemID|") != string::npos) {
-							cout << cch << endl;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|megaphone\nitemID|2480|\nwords|") != string::npos) {
 							string text = cch.substr(62, cch.length() - 62).c_str();
@@ -2349,7 +4161,7 @@ int main(int argc, char* argv[]) {
 										break;
 									}
 								}
-								packet_(peer, "action|log\nmsg|>> (" + to_playmod_time(time_) + "before you can broadcast again)", "");
+								packet_(peer, "action|log\nmsg|>> (" + Algorithm::to_playmod_time(time_) + "before you can broadcast again)", "");
 								break;
 							}
 							if (cansb) {
@@ -2381,7 +4193,7 @@ int main(int argc, char* argv[]) {
 										break;
 									}
 								}
-								packet_(peer, "action|log\nmsg|>> (" + to_playmod_time(time_) + "before you can broadcast again)", "");
+								packet_(peer, "action|log\nmsg|>> (" + Algorithm::to_playmod_time(time_) + "before you can broadcast again)", "");
 								break;
 							}
 							if (cansb) {
@@ -2411,24 +4223,39 @@ int main(int argc, char* argv[]) {
 							gamepacket_t p;
 							p.Insert("OnDialogRequest");
 							if (btn == "12345") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wCrazy Jim's Quest Emporium``|left|3902|\nadd_textbox|HEEEEYYY there Growtopian! I'm Crazy Jim, and my quests are so crazy they're KERRRRAAAAZZY!! And that is clearly very crazy, so please, be cautious around them. What can I do ya for, partner?|left|\nadd_button|chc1_1|Daily Quest|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
-							else if (btn == "53785") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSales-Man``|left|4358|\nadd_textbox|It is I, Sales-Man, savior of the wealthy! Let me rescue you from your riches. What would you like to buy today?|left|\nadd_button|chc4_1|Surgery Items|noflags|0|0|"/*\nadd_button|chc3_1|Zombie Defense Items|noflags|0|0|*/"\nadd_button|chc2_1|Blue Gem Lock|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
+							else if (btn == "53785") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSales-Man``|left|4358|\nadd_textbox|It is I, Sales-Man, savior of the wealthy! Let me rescue you from your riches. What would you like to buy today?|left|\nadd_button|chc4_1|Surgery Items|noflags|0|0|"/*\nadd_button|chc3_1|Zombie Defense Items|noflags|0|0|*/"\nadd_button|chc2_1|Blue Gem Lock|noflags|0|0|\nadd_button|chc0_1|Diamond Lock|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 							else if (btn == "chc1_1") {
-								if (today_day != pInfo(peer)->dd) {
+								if (!pInfo(peer)->AlreadyDailyQ) {
 									int haveitem1 = 0, haveitem2 = 0, received = 0;
 									modify_inventory(peer, item1, haveitem1);
 									modify_inventory(peer, item2, haveitem2);
 									if (haveitem1 >= item1c && haveitem2 >= item2c) received = 1;
+									if (haveitem1 >= item1c && haveitem2 >= item2c && has_playmod(pInfo(peer), "Delectable") && rand() % 50 + 1 < 25) received = 2;
 									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wCrazy Jim's Daily Quest``|left|3902|\nadd_textbox|I guess some people call me Crazy Jim because I'm a bit of a hoarder. But I'm very particular about what I want! And today, what I want is this:|left|\nadd_label_with_icon|small|`2" + to_string(item1c) + " " + items[item1].name + "|left|" + to_string(item1) + "|\nadd_smalltext|and|left|\nadd_label_with_icon|small|`2" + to_string(item2c) + " " + items[item2].name + "|left|" + to_string(item2) + "|\nadd_spacer|small|\nadd_smalltext|You shove all that through the phone (it works, I've tried it), and I will hand you one of the `2Growtokens`` from my personal collection!  But hurry, this offer is only good until midnight, and only one `2Growtoken`` per person!|left|\nadd_spacer|small|\nadd_smalltext|`6(You have " + to_string(haveitem1) + " " + items[item1].name + " and " + to_string(haveitem2) + " " + items[item2].name + ")``|left|\nadd_spacer|small|" + (received == 1 ? "\nadd_button|turnin|Turn in items|noflags|0|0|" : "") + "\nadd_spacer|small|\nadd_button|12345|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 								}
 								else p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wCrazy Jim's Daily Quest``|left|3902|\nadd_textbox|You've already completed my Daily Quest for today! Call me back after midnight to hear about my next cravings.|left|\nadd_button|12345|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 							}
 							else if (btn == "turnin") {
-								if (today_day != pInfo(peer)->dd) {
+								if (!pInfo(peer)->AlreadyDailyQ) {
 									int haveitem1 = 0, haveitem2 = 0, received = 0, remove = -1, remove2 = -1, giveitem = 1;
 									modify_inventory(peer, item1, haveitem1);
 									modify_inventory(peer, item2, haveitem2);
-									if (haveitem1 >= item1c && haveitem2 >= item2c) received = 1;
-									if (received == 1) {
+									if (rand() % 100 + 1 < 25 and has_playmod(pInfo(peer), "Delectable") and haveitem1 >= item1c and haveitem2 >= item2c) received = 2;
+									else if (haveitem1 >= item1c && haveitem2 >= item2c) received = 1;
+									int giveToken = received;
+									if (received != 0) {
+										if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress += received;
+											if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+												pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+												gamepacket_t p;
+												p.Insert("OnTalkBubble");
+												p.Insert(pInfo(peer)->netID);
+												p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+												p.Insert(0), p.Insert(0);
+												p.CreatePacket(peer);
+											}
+										}
 										if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
 											pInfo(peer)->quest_progress += received;
 											if (pInfo(peer)->quest_progress >= 28) {
@@ -2441,33 +4268,129 @@ int main(int argc, char* argv[]) {
 												p.CreatePacket(peer);
 											}
 										}
-										pInfo(peer)->dd = today_day;
+										pInfo(peer)->AlreadyDailyQ = true;
 										modify_inventory(peer, item1, remove *= item1c);
 										modify_inventory(peer, item2, remove2 *= item2c);
-										modify_inventory(peer, 1486, giveitem);
-										gamepacket_t p, p4;
-										p.Insert("OnConsoleMessage");
-										p.Insert("[`6You jammed " + to_string(item1c) + " " + items[item1].name + " and " + to_string(item2c) + " " + items[item2].name + " into the phone, and 1 `2Growtoken`` popped out!``]");
-										p4.Insert("OnTalkBubble");
-										p4.Insert(pInfo(peer)->netID);
-										p4.Insert("Thanks, pardner! Have 1 `2Growtoken`w!");
-										p4.Insert(0), p4.Insert(0);
-										p.CreatePacket(peer), p4.CreatePacket(peer);
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											if (pInfo(currentPeer)->world == pInfo(peer)->world) {
-												gamepacket_t p3;
-												p3.Insert("OnParticleEffect");
-												p3.Insert(198);
-												p3.Insert((float)pInfo(peer)->x + 10, (float)pInfo(peer)->y + 16);
-												p3.CreatePacket(currentPeer);
+										modify_inventory(peer, 1486, giveToken);
+										{
+											{
+												string name_ = pInfo(peer)->world;
+												vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+												if (p != worlds.end()) {
+													World* world_ = &worlds[p - worlds.begin()];
+													PlayerMoving data_{};
+													data_.x = pInfo(peer)->lastwrenchx * 32 + 16, data_.y = pInfo(peer)->lastwrenchy * 32 + 16;
+													data_.packetType = 19, data_.plantingTree = 500;
+													data_.punchX = 1486, data_.punchY = pInfo(peer)->netID;
+													int32_t to_netid = pInfo(peer)->netID;
+													BYTE* raw = packPlayerMoving(&data_);
+													raw[3] = 5;
+													memcpy(raw + 8, &to_netid, 4);
+													for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+														if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+														if (pInfo(currentPeer)->world == world_->name) {
+															gamepacket_t p3;
+															p3.Insert("OnParticleEffect");
+															p3.Insert(198);
+															p3.Insert((float)pInfo(peer)->x + 10, (float)pInfo(peer)->y + 16);
+															p3.CreatePacket(currentPeer);
+															send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+														}
+													}
+													delete[] raw;
+												}
 											}
+											gamepacket_t p, p4;
+											p.Insert("OnConsoleMessage");
+											p.Insert("[`6You jammed " + to_string(item1c) + " " + items[item1].name + " and " + to_string(item2c) + " " + items[item2].name + " into the phone, and " + to_string(received) + " `2Growtoken`` popped out!``]");
+											p4.Insert("OnTalkBubble");
+											p4.Insert(pInfo(peer)->netID);
+											p4.Insert("Thanks, pardner! Have " + to_string(received) + " `2Growtoken`w!");
+											p4.Insert(0), p4.Insert(0);
+											p.CreatePacket(peer), p4.CreatePacket(peer);
 										}
 									}
 								}
 								else {
 									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wCrazy Jim's Daily Quest``|left|3902|\nadd_textbox|You've already completed my Daily Quest for today! Call me back after midnight to hear about my next cravings.|left|\nadd_button|12345|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 									p.CreatePacket(peer);
+								}
+							}
+							else if (btn == "chc0_1") {
+								int c_ = pInfo(peer)->gems;
+								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wDiamond Lock``|left|1796|\nadd_textbox|Excellent! I'm happy to sell you a Diamond Lock in exchange for 200.000 Gems.|left|\nadd_smalltext|`6You have " + fixint(c_) + " Gems.``|left|" + (c_ >= 200000 ? "\nadd_button|chc0_2_1|Thank you!|noflags|0|0|" : "") + "\nadd_button|53785|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
+							}
+							else if (btn == "chc0_2_1") {
+								int c_ = pInfo(peer)->gems, c1796 = 0, additem = 0;
+								modify_inventory(peer, 1796, c1796);
+								if (c_ < 200000) continue;
+								if (c1796 >= 200) {
+									gamepacket_t p;
+									p.Insert("OnTalkBubble");
+									p.Insert(pInfo(peer)->netID);
+									p.Insert("You don't have room in your backpack!");
+									p.Insert(0), p.Insert(1);
+									p.CreatePacket(peer);
+									{
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("You don't have room in your backpack!");
+										p.CreatePacket(peer);
+									}
+									continue;
+								}
+								if (c_ >= 200000) {
+									if (get_free_slots(pInfo(peer)) >= 2) {
+										int cz_ = 200000;
+										if (modify_inventory(peer, 1796, additem = 1) == 0) {
+											{
+												{
+													pInfo(peer)->gems -= cz_;
+													string name_ = pInfo(peer)->world;
+													vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+													if (p != worlds.end()) {
+														gamepacket_t p8;
+														p8.Insert("OnSetBux");
+														p8.Insert(pInfo(peer)->gems);
+														p8.Insert(0);
+														p8.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+														if (pInfo(peer)->supp >= 2) {
+															p8.Insert((float)33796, (float)1, (float)0);
+														}
+														p8.CreatePacket(peer);
+														World* world_ = &worlds[p - worlds.begin()];
+														PlayerMoving data_{};
+														data_.x = pInfo(peer)->lastwrenchx * 32 + 16, data_.y = pInfo(peer)->lastwrenchy * 32 + 16;
+														data_.packetType = 19, data_.plantingTree = 500;
+														data_.punchX = 1796, data_.punchY = pInfo(peer)->netID;
+														int32_t to_netid = pInfo(peer)->netID;
+														BYTE* raw = packPlayerMoving(&data_);
+														raw[3] = 5;
+														memcpy(raw + 8, &to_netid, 4);
+														for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+															if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+															if (pInfo(currentPeer)->world == world_->name) {
+																send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+															}
+														}
+														delete[] raw;
+													}
+												}
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("[`6You spent 200.000 Gems to get 1 Diamond Lock``]");
+												p.CreatePacket(peer);
+											}
+										}
+										int c_ = pInfo(peer)->gems;
+										p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wDiamond Lock``|left|1796|\nadd_textbox|Excellent! I'm happy to sell you a Diamond Lock in exchange for 200.000 Gems.|left|\nadd_smalltext|`6You have " + fixint(c_) + " Gems.``|left|" + (c_ >= 200000 ? "\nadd_button|chc0_2_1|Thank you!|noflags|0|0|" : "") + "\nadd_button|53785|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("You don't have enough inventory space!");
+										p.CreatePacket(peer);
+									}
 								}
 							}
 							else if (btn == "chc2_1") {
@@ -2533,12 +4456,12 @@ int main(int argc, char* argv[]) {
 										modify_inventory(peer, 1796, c_);
 										p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wBlue Gem Lock``|left|7188|\nadd_textbox|Excellent! I'm happy to sell you a Blue Gem Lock in exchange for 100 Diamond Lock..|left|\nadd_smalltext|`6You have " + to_string(c_) + " Diamond Lock.``|left|" + (c_ >= 100 ? "\nadd_button|chc2_2_1|Thank you!|noflags|0|0|" : "") + "\nadd_button|53785|Back|noflags|0|0|\nend_dialog|3898|Hang Up||\n");
 									}
-								}
-								else {
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage");
-									p.Insert("You don't have enough inventory space!");
-									p.CreatePacket(peer);
+									else {
+										gamepacket_t p;
+										p.Insert("OnConsoleMessage");
+										p.Insert("You don't have enough inventory space!");
+										p.CreatePacket(peer);
+									}
 								}
 							}
 							else if (btn == "chc3_1") {
@@ -2565,46 +4488,10 @@ int main(int argc, char* argv[]) {
 							if (btn != "turnin") p.CreatePacket(peer);
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|view_inventory") != string::npos) {
-							if (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1) {
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-									if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-										string recently_visited = "";
-										for (auto it = pInfo(currentPeer)->last_visited_worlds.rbegin(); it != pInfo(currentPeer)->last_visited_worlds.rend(); ++it) {
-											string a_ = *it + (next(it) != pInfo(currentPeer)->last_visited_worlds.rend() ? "``, " : "``");
-											recently_visited += "`#" + a_;
-										}
-										string inventory = "";
-										int thats5 = 0, thatsadded = 0;
-										for (int i_ = 0; i_ < pInfo(currentPeer)->inv.size(); i_++) {
-											if (pInfo(currentPeer)->inv[i_].id == 0 || pInfo(currentPeer)->inv[i_].id == 18 || pInfo(currentPeer)->inv[i_].id == 32) continue;
-											thats5++;
-											thatsadded = 0;
-											inventory += "\nadd_button_with_icon|" + (pInfo(peer)->dev == 1 ? to_string(pInfo(currentPeer)->inv[i_].id) : "") + "||staticBlueFrame|" + to_string(pInfo(currentPeer)->inv[i_].id) + "|" + to_string(pInfo(currentPeer)->inv[i_].count) + "|";
-											if (thats5 >= 6) {
-												thats5 = 0;
-												thatsadded = 1;
-												inventory += "\nadd_button_with_icon||END_LIST|noflags|0||";
-											}
-										}
-										gamepacket_t p;
-										p.Insert("OnDialogRequest");
-										p.Insert("set_default_color|`o\nadd_label_with_icon|small|`0Inventory of " + pInfo(currentPeer)->name_color + pInfo(currentPeer)->tankIDName + "``'s (" + pInfo(currentPeer)->requestedName + ") - #" + to_string(pInfo(currentPeer)->netID) + "|left|3802|\nadd_spacer|small|\nadd_textbox|Last visited: " + recently_visited + "|\nadd_textbox|Gems: `w" + setGems(pInfo(currentPeer)->gems) + "|\nadd_textbox|Backpack slots: `w" + to_string(pInfo(currentPeer)->inv.size() - 1) + "|" + inventory + "" + (thatsadded == 1 ? "" : "\nadd_button_with_icon||END_LIST|noflags|0||") + "|\nend_dialog|view_inventory|Continue||\nadd_quick_exit|");
-										p.CreatePacket(peer);
-									}
-								}
-							}
-							break;
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|top\nbuttonClicked|warp_to_") != string::npos) {
 							string world_name = cch.substr(59, cch.length() - 59);
 							replace_str(world_name, "\n", "");
 							join_world(peer, world_name);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|wotwlistback\n\n") {
-							SendCmd(peer, "/top", true);
 							break;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|shopgemsconfirm\ngemspurchase|") != string::npos) {
@@ -2613,58 +4500,7 @@ int main(int argc, char* argv[]) {
 							pInfo(peer)->offergems = gems;
 							gamepacket_t p;
 							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Confirm Checkout``|left|9438|\n\nadd_spacer|small|\nadd_textbox|`2Buy`` `2" + setGems(pInfo(peer)->offergems * 25000) + " `wGems for `1" + to_string(gems) + " Hoshi|\nadd_button|shopmoneybuy|`0Confirm``|NOFLAGS|0|0|\nadd_button||`0Cancel``|NOFLAGS|0|0|");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoneybuy\n\n") {
-							if (pInfo(peer)->offergems <= 0) break;
-							if (pInfo(peer)->gtwl >= pInfo(peer)->offergems) {
-								pInfo(peer)->gems += (pInfo(peer)->offergems * 25000);
-								{
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage");
-									p.Insert("You bought `0" + setGems(pInfo(peer)->offergems * 25000) + "`` Gems!");
-									p.CreatePacket(peer);
-								}
-								packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-								gamepacket_t p;
-								p.Insert("OnSetBux");
-								p.Insert(pInfo(peer)->gems);
-								p.Insert(0);
-								p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-								if (pInfo(peer)->supp >= 2) {
-									p.Insert((float)33796, (float)1, (float)0);
-								}
-								p.CreatePacket(peer);
-								pInfo(peer)->gtwl -= pInfo(peer)->offergems;
-							}
-							break;
-						}
-						else if (cch == "action|claimprogressbar\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopgrowtoken\n\n" || cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|toplist\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoney\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprank\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopitems\n\n" || cch == "action|dialog_return\ndialog_name|socialportal\nbuttonClicked|onlinepointhub\n\n") {
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprank\n\n") p.Insert(a + "set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Ranks``|left|9474|\n\nadd_spacer|small|\n\nadd_textbox|`wPlease choose rank that you want to purchase!``|left|\n\nadd_spacer|small|\nadd_label_with_icon_button|small|`o <-- `7Road to Glory " + (pInfo(peer)->glo ? "`c(Owned)" : "") + "``|left|9436|" + (pInfo(peer)->glo ? "" : "shoprankglory") + "|\nadd_label_with_icon_button|small|`o <-- `7Grow Pass " + (pInfo(peer)->gp ? "`c(Owned)" : "") + "``|left|9222|" + (pInfo(peer)->gp ? "" : "shoprankgrowpass") + "|\nadd_spacer|small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopitems\n\n") p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Rare Items``|left|7188|\n\nadd_spacer|small|\n\nadd_textbox|`wPlease choose item that you want to purchase!``|left|\n\nadd_spacer|small|" + shop_list + "||\nadd_button_with_icon||END_LIST|noflags|0|0|\nadd_button|shop|`0Back``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopmoney\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Buy Gems``|left|9438|\n\nadd_spacer|small|\nadd_textbox|`11 Hoshi `wis `925,000 `wgems!``|\nadd_textbox|`wYou have `1" + to_string(pInfo(peer)->gtwl) + " Hoshi`w, how much hoshi you want to spend for gems? `7(Enter hoshi amount)``|\nadd_text_input|gemspurchase|`1Hoshi``||30|\nend_dialog|shopgemsconfirm|Cancel|Checkout|\n");
-							if (cch == "action|dialog_return\ndialog_name|top\nbuttonClicked|toplist\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`8Top worlds today``|left|394|\nadd_spacer|" + top_list + "\nadd_button|wotwlistback|`oBack`|NOFLAGS|0|0|\nend_dialog|top|Close||\n");
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shopgrowtoken\n\n")p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Growtoken``|left|1486|\nadd_spacer|small|\n\nadd_textbox|`7Please choose packet you want to purchase:``|left|\n\nadd_spacer|small|\nadd_button_with_icon|gtoken_packet_1|`7Buy Packet 1|staticYellowFrame|1486|5|\nadd_button_with_icon|gtoken_packet_2|`7Buy Packet 2|staticYellowFrame|1486|10|\nadd_button_with_icon|gtoken_packet_3|`7Buy Packet 3|staticYellowFrame|1486|50|\nadd_button_with_icon|gtoken_packet_4|`7Buy Packet 4|staticYellowFrame|6802||\nadd_button_with_icon||END_LIST|noflags|0|0|\nadd_button|shop|`0Back``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
-							if (cch == "action|dialog_return\ndialog_name|socialportal\nbuttonClicked|onlinepointhub\n\n") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`0Online Star Hub``|left|7074|\nadd_spacer|small|\nadd_textbox|Welcome to Online Star HUB! Do you have any Online Star? You can buy items from me with them.|left|\nadd_smalltext|`2You can earn 1 Online Star every 5 minutes just by playing the game.``|left|\nadd_spacer|small|\nadd_textbox|You have `1" + setGems(pInfo(peer)->opc) + " ``Online Star``.|left|\ntext_scaling_string|99,000OPC|" + opc_list + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_button|chc0|OK|noflags|0|0|\nnend_dialog|gazette||OK|");
-							//if (cch == "action|claimprogressbar\n")p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wAbout Valentine's Event``|left|384|\nadd_spacer|small|\nadd_textbox|During Valentine's Week you will gain points for opening Golden Booty Chests. Claim enough points to earn bonus rewards.|left|\nadd_spacer|small|\nadd_textbox|Current Progress: " + to_string(pInfo(peer)->booty_broken) + "/100|left|\nadd_spacer|small|\nadd_textbox|Reward:|left|\nadd_label_with_icon|small|Super Golden Booty Chest|left|9350|\nadd_smalltext|             - 4x chance of getting a Golden Heart Crystal when opening!|left|\nend_dialog|valentines_quest||OK|\n");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankgrowpass\n\n" || cch == "action|shoprankgrowpass\n\n" || cch == "action|shoprankgrowpass\n" || cch == "action|shoprankgrowpass") {
-							gamepacket_t p(500);
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Grow Pass``|left|9222|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `1100 Hoshi``|left|\nadd_smalltext|Duration: `7[```531 Days```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive daily items everyday, get 2x xp and gems from breaking block or harvesting tree, receive newest growtopia items, unlock exclusive title and skin only for grow pass!``|left|\nadd_spacer|\nadd_button|shoprankgrowpassbuy|`0Purchase for `1100 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankglory\n\n" || cch == "action|shoprankglory\n\n" || cch == "action|shoprankglory\n" || cch == "action|shoprankglory") {
-							gamepacket_t p(500);
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase Road to Glory``|left|9436|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `125 Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\nadd_smalltext|Extra: `7Receive 100k gems instantly, get up to 4M gems by leveling up, and Unlock Account Security feature.``|left|\nadd_spacer|\nadd_button|shoprankglorybuy|`0Purchase for `125 Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Confirm Checkout``|left|9162|\n\nadd_spacer|small|\nadd_textbox|`2Buy`` `2" + setGems(pInfo(peer)->offergems * 100000) + " `wGems for `1" + to_string(gems) + " Hoshi|\nadd_button|shopmoneybuy|`0Confirm``|NOFLAGS|0|0|\nadd_button||`0Cancel``|NOFLAGS|0|0|");
 							p.CreatePacket(peer);
 							break;
 						}
@@ -2699,11 +4535,20 @@ int main(int argc, char* argv[]) {
 						else if (cch.find("action|dialog_return\ndialog_name|\nbuttonClicked|shop_price_") != string::npos) {
 							int item = atoi(cch.substr(59, cch.length() - 59).c_str());
 							if (item <= 0 || item >= items.size() || items[item].pwl == 0) continue;
-							string special = "`eThere is none yet for that item``";
+							string special = "`7There is none yet for that item``";
 							// hoshi shop item special effects description
-							if (item == 11118) special = "`wDrop x3 Gems``";
-							if (item == 11118) special += ", `wHigher chance on getting ores.``";
-							if (item == 5480) special = "`wBreak 3 blocks in a row.``";
+							if (item == 9160) special = "`wx3 Gems Drop and Break/Place blocks 3 row at once``";
+							if (item == 3130) special = "`wMax Surgery Skill``";
+							if (item == 13026) special = "`w2 Hit on Farmables``";
+							if (item == 5192 || item == 5194) special = "`wDrop x10 Gems``";
+							if (item == 11118 || item == 9716) special = "`wDrop x3 Gems``";
+							if (item == 11318) special = "`wBreakhits 1x on All Farmables``";
+							if (item == 5480) special = "`wBreak blocks 3 row at once``";
+							if (item == 8372) special = "`w1 Hit on every blocks``";
+							if (item == 7782) special = "`wDrop 25x Gems";
+							if (item == 9520) special = "Exclusive Items";
+							if (item == 13200) special = "`wIncrease Max Capacity World Machines, x28 XP Multiplier";
+							if (item == 11118 || item == 9716) special += ", Breakhits 3x on All Blocks``";
 							gamepacket_t p;
 							p.Insert("OnDialogRequest");
 							p.Insert("set_default_color|`o\n\nadd_label_with_icon|big|`0Purchase " + items[item].name + "``|left|" + to_string(items[item].id) + "|\nadd_smalltext|`4Make sure to read this information clearly!``|left|\nadd_smalltext|Price: `1" + setGems(items[item].pwl) + " Hoshi``|left|\nadd_smalltext|Duration: `7[```4~```7]``|left|\nadd_smalltext|Stock: `7[```4~```7]``|left|\n\nadd_textbox|`6Special Effects:``|left|\nadd_smalltext|" + special + "|left|\nadd_spacer|\nadd_button|shop_item_" + to_string(item) + "|`0Purchase for `1" + setGems(items[item].pwl) + " Hoshi``|noflags|0|0||small|\n\nadd_quick_exit|\nadd_button|shop|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
@@ -2738,15 +4583,13 @@ int main(int argc, char* argv[]) {
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|\nbuttonClicked|locke") != string::npos) {
 							if (pInfo(peer)->world == "LOCKE") {
-								if (thedaytoday == 0 || pInfo(peer)->superdev) {
-									int wl = 0, dl = 0;
-									modify_inventory(peer, 242, wl);
-									modify_inventory(peer, 1796, dl);
-									gamepacket_t p;
-									p.Insert("OnDialogRequest");
-									p.Insert(a + "set_default_color|`o\n\nadd_label_with_icon|big|`9Locke The Traveling Salesman``|left|2398|\nadd_spacer|small|\nadd_smalltext|Ho there, friend! Locke's my name, and locks are my game. I Love 'em all, Diamond, Huge.. even Small! If you can part with some locks, I'll give you something special in return. Whaddya say?|left|\nadd_spacer|small|\nadd_smalltext|" + (wl + dl != 0 ? "`9(Hmm, smells like you care carrying " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", and and " + to_string(dl) + " Diamond Lock" : "") + ")``" : "`9(Hmm, smells like you don't care any world locks)``") + "|left|\nadd_spacer|small|" + shop_list2 + "|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
-									p.CreatePacket(peer);
-								}
+								int wl = 0, dl = 0;
+								modify_inventory(peer, 242, wl);
+								modify_inventory(peer, 1796, dl);
+								gamepacket_t p;
+								p.Insert("OnDialogRequest");
+								p.Insert(a + "set_default_color|`o\n\nadd_label_with_icon|big|`9Locke The Traveling Salesman``|left|2398|\nadd_spacer|small|\nadd_smalltext|Ho there, friend! Locke's my name, and locks are my game. I Love 'em all, Diamond, Huge.. even Small! If you can part with some locks, I'll give you something special in return. Whaddya say?|left|\nadd_spacer|small|\nadd_smalltext|" + (wl + dl != 0 ? "`9(Hmm, smells like you care carrying " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", and and " + to_string(dl) + " Diamond Lock" : "") + ")``" : "`9(Hmm, smells like you don't care any world locks)``") + "|left|\nadd_spacer|small|" + shop_list2 + "|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|");
+								p.CreatePacket(peer);
 							}
 							break;
 						}
@@ -2842,6 +4685,30 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->gtwl >= 5) {
 								int c_ = 5;
 								if (modify_inventory(peer, 1486, c_) == 0) {
+									if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress += c_;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
+									if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress += c_;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									pInfo(peer)->gtwl -= 5;
 									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
 									gamepacket_t p;
@@ -2868,6 +4735,30 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->gtwl >= 10) {
 								int c_ = 10;
 								if (modify_inventory(peer, 1486, c_) == 0) {
+									if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress += c_;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
+									if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress += c_;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									pInfo(peer)->gtwl -= 10;
 									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
 									gamepacket_t p;
@@ -2894,6 +4785,30 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->gtwl >= 50) {
 								int c_ = 50;
 								if (modify_inventory(peer, 1486, c_) == 0) {
+									if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress += c_;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
+									if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress += c_;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									pInfo(peer)->gtwl -= 50;
 									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
 									gamepacket_t p;
@@ -2920,6 +4835,30 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->gtwl >= 100) {
 								int c_ = 1;
 								if (modify_inventory(peer, 6802, c_) == 0) {
+									if (pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress += c_;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
+									if (pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
+										pInfo(peer)->quest_progress += c_;
+										if (pInfo(peer)->quest_progress >= 28) {
+											pInfo(peer)->quest_progress = 28;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Legendary Quest step complete! I'm off to see a Wizard!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									pInfo(peer)->gtwl -= 100;
 									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
 									gamepacket_t p;
@@ -2957,6 +4896,18 @@ int main(int argc, char* argv[]) {
 							if (pInfo(peer)->opc >= items[item].oprc) {
 								int c_ = 1;
 								if (modify_inventory(peer, item, c_) == 0) {
+									if (item == 1486 && pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress++;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									if (item == 1486 && pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
 										pInfo(peer)->quest_progress++;
 										if (pInfo(peer)->quest_progress >= 28) {
@@ -2988,125 +4939,6 @@ int main(int argc, char* argv[]) {
 								p.Insert("OnConsoleMessage");
 								p.Insert("You don't have enough `1Online Star`` to purchase this item.");
 								p.CreatePacket(peer);
-							}
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankgrowpassbuy\n\n" || cch == "action|shoprankgrowpassbuy\n\n" || cch == "action|shoprankgrowpassbuy\n" || cch == "action|shoprankgrowpassbuy") {
-							if (pInfo(peer)->gtwl >= 100) {
-								int c_ = 1;
-								if (modify_inventory(peer, 11304, c_) == 0) {
-									pInfo(peer)->gtwl -= 100;
-									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage");
-									p.Insert("`o>> You purchased Royal Grow Pass Token, check your inventory and consume to get the benefits!");
-									p.CreatePacket(peer);
-								}
-								else {
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage");
-									p.Insert("No inventory space.");
-									p.CreatePacket(peer);
-								}
-							}
-							else {
-								gamepacket_t p;
-								p.Insert("OnConsoleMessage");
-								p.Insert("You don't have enough `1Hoshi`` to buy this.");
-								p.CreatePacket(peer);
-							}
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shoprankglorybuy\n\n" || cch == "action|shoprankglorybuy\n\n" || cch == "action|shoprankglorybuy\n" || cch == "action|shoprankglorybuy") {
-							if (pInfo(peer)->gtwl >= 25) {
-								pInfo(peer)->gems += 100000;
-								gamepacket_t p;
-								p.Insert("OnSetBux");
-								p.Insert(pInfo(peer)->gems);
-								p.Insert(0);
-								p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-								if (pInfo(peer)->supp >= 2) {
-									p.Insert((float)33796, (float)1, (float)0);
-								}
-								p.CreatePacket(peer);
-								pInfo(peer)->gtwl -= 25;
-								packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-								pInfo(peer)->glo = 1;
-								{
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage");
-									p.Insert("`o>> You purchased Road to Glory! Wrench yourself and press on Road to Glory button!``");
-									p.CreatePacket(peer);
-								}
-							}
-							break;
-						}
-						else if (cch.find("action|showblarneyprogress") != string::npos) {
-							gamepacket_t p(550);
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wBlarney Bonanza!``|left|528|\nadd_spacer|small|\nadd_textbox|Welcome to the Blarney Bonanza|left|\nadd_spacer|small|\nadd_textbox|As you, as a community, complete Blarneys and kiss the most magical stone, items will unlock for you to pick up in the store.|left|\nadd_spacer|small|\nadd_textbox|There are 4 items to unlock throughout the event.|left|\nadd_spacer|small|\nadd_textbox|Items will only remain unlocked for a short amount of time, so make sure you check back often! These items can be unlocked multiple times throughout the week.|left|\nadd_spacer|small|\nend_dialog|blarney_dialog||OK|\n");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shop\n\n" || cch == "action|dialog_return\ndialog_name|\nbuttonClicked|deposit\n\n") {
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|shop\n\n") SendCmd(peer, "/shop", true);
-							if (cch == "action|dialog_return\ndialog_name|\nbuttonClicked|deposit\n\n") SendCmd(peer, "/topup", true);
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|claim_reward\n\n") {
-							if (pInfo(peer)->gp == 1) {
-								if (today_day != pInfo(peer)->gd) {
-									vector<int> list2{ 1796, 10396, 11476, 542, 10386, 722, 10826 };
-									int receive = 1, item = list2[rand() % list2.size()], received = 1;
-									if (item == 10386 || item == 722) receive = 20, received = 20;
-									if (item == 542) receive = 100, received = 100;
-									if (item == 10826) receive = 5, received = 5;
-									if (modify_inventory(peer, item, receive) == 0) {
-										pInfo(peer)->gd = today_day;
-										{
-											gamepacket_t p;
-											p.Insert("OnConsoleMessage");
-											p.Insert("`9 >> You claimed your Grow Pass reward:");
-											p.CreatePacket(peer);
-										}
-										{
-											gamepacket_t p;
-											p.Insert("OnConsoleMessage");
-											p.Insert("Given `0" + to_string(received) + " " + items[item].name + "``.");
-											p.CreatePacket(peer);
-										}
-										PlayerMoving data_{};
-										data_.packetType = 17;
-										data_.netID = 48;
-										data_.YSpeed = 48;
-										data_.x = pInfo(peer)->x + 16;
-										data_.y = pInfo(peer)->y + 16;
-										BYTE* raw = packPlayerMoving(&data_);
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											if (pInfo(currentPeer)->world == pInfo(peer)->world) {
-												send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-											}
-										}
-										delete[] raw;
-									}
-									else {
-										{
-											gamepacket_t p;
-											p.Insert("OnConsoleMessage");
-											p.Insert("Clean your inventory and try again!");
-											p.CreatePacket(peer);
-										}
-									}
-								}
-								else {
-									{
-										gamepacket_t p;
-										p.Insert("OnConsoleMessage");
-										p.Insert("You already claimed your reward today!");
-										p.CreatePacket(peer);
-									}
-								}
 							}
 							break;
 						}
@@ -3153,7 +4985,6 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-
 						else if (cch.find("action|dialog_return\ndialog_name|donation_box_edit\nitemid|") != string::npos) {
 							int item = atoi(cch.substr(58, cch.length() - 58).c_str()), got = 0;
 							modify_inventory(peer, item, got);
@@ -3165,6 +4996,14 @@ int main(int argc, char* argv[]) {
 							else if (items[item].rarity == 1) {
 								gamepacket_t p;
 								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("`7[```4This box only accepts items rarity 2+ or greater`7]``"), p.CreatePacket(peer);
+							}
+							else if (check_transmuted(peer, item)) {
+								gamepacket_t p;
+								p.Insert("OnTalkBubble"),
+									p.Insert(pInfo(peer)->netID),
+									p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+									p.CreatePacket(peer);
+								break;
 							}
 							else {
 								pInfo(peer)->lastchoosenitem = item;
@@ -3228,17 +5067,11 @@ int main(int argc, char* argv[]) {
 							packet_(peer, "action|play_sfx\nfile|audio/page_turn.wav\ndelayMS|0");
 							break;
 						}
-						else if (cch == "action|dialog_return\ndialog_name|surge\n") {
-							if (pInfo(peer)->lastwrenchb == 4296 || pInfo(peer)->lastwrenchb == 8558) {
-								setstats(peer, rand() % 30, "", items[pInfo(peer)->lastwrenchb].name);
-								pInfo(peer)->lastwrenchb = 0;
-							}
-							break;
-						}
-						// 
 						else if (cch.find("action|dialog_return\ndialog_name|give_item\nbuttonClicked|give\n\ncount|") != string::npos) {
+							if (items[pInfo(peer)->lastwrenchb].blockType != BlockTypes::DONATION) break;
 							int count = atoi(cch.substr(69, cch.length() - 69).c_str()), got = 0;
 							string text = cch.substr(80 + to_string(count).length(), cch.length() - 80 + to_string(count).length()).c_str();
+							if (pInfo(peer)->lastchoosenitem == 0 or pInfo(peer)->lastchoosenitem == NULL) break;
 							replace_str(text, "\n", "");
 							modify_inventory(peer, pInfo(peer)->lastchoosenitem, got);
 							if (text.size() > 128 || got <= 0 || count <= 0 || count > items.size()) break;
@@ -3249,6 +5082,14 @@ int main(int argc, char* argv[]) {
 								if (count > got) p.Insert("You don't have that to give!");
 								else p.Insert("`7[```4You can't place that in the box, you need it!`7]``");
 								p.CreatePacket(peer);
+							}
+							else if (check_transmuted(peer, pInfo(peer)->lastchoosenitem)) {
+								gamepacket_t p;
+								p.Insert("OnTalkBubble"),
+									p.Insert(pInfo(peer)->netID),
+									p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+									p.CreatePacket(peer);
+								break;
 							}
 							else {
 								string name_ = pInfo(peer)->world;
@@ -3273,19 +5114,30 @@ int main(int argc, char* argv[]) {
 											send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_), ENET_PACKET_FLAG_RELIABLE);
 										}
 										delete[] raw, blc;
-										if (block_->locked) upd_lock(*block_, *world_, peer);
 									}
 									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(peer)->world != pInfo(currentPeer)->world) continue;
-										gamepacket_t p, p2;
-										p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("`7[```5[```w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + "`` places `5" + to_string(count) + "`` `2" + items[pInfo(peer)->lastchoosenitem].name + "`` into the " + items[pInfo(peer)->lastwrenchb].name + "`5]```7]``");
-										p.CreatePacket(currentPeer);
-										p2.Insert("OnConsoleMessage");
-										p2.Insert("`7[```5[```w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + "`` places `5" + to_string(count) + "`` `2" + items[pInfo(peer)->lastchoosenitem].name + "`` into the " + items[pInfo(peer)->lastwrenchb].name + "`5]```7]``");
-										p2.CreatePacket(currentPeer);
-										packet_(currentPeer, "action|play_sfx\nfile|audio/page_turn.wav\ndelayMS|0");
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(peer)->world != pInfo(currentPeer)->world) continue;
+										{
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`7[```5[```w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + "`` places `5" + to_string(count) + "`` `2" + items[pInfo(peer)->lastchoosenitem].name + "`` into the " + items[pInfo(peer)->lastwrenchb].name + "`5]```7]``");
+											p.Insert(0);
+											p.CreatePacket(currentPeer);
+											packet_(currentPeer, "action|play_sfx\nfile|audio/page_turn.wav\ndelayMS|0");
+										}
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("`7[```5[```w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + "`` places `5" + to_string(count) + "`` `2" + items[pInfo(peer)->lastchoosenitem].name + "`` into the " + items[pInfo(peer)->lastwrenchb].name + "`5]```7]``");
+											p.CreatePacket(currentPeer);
+										}
 									}
-									//webhook here
+									Algorithm::log_text("DonationLog", pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") places " + to_string(count) + " " + items[pInfo(peer)->lastchoosenitem].ori_name + " into the " + items[pInfo(peer)->lastwrenchb].ori_name + " at world " + pInfo(peer)->world);
+									if (pInfo(peer)->lastchoosenitem == 7188) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously donated " + to_string(count) + " Blue Gem Lock in World: " + pInfo(peer)->world + ".");
+									if (pInfo(peer)->lastchoosenitem == 1796 and count > 10) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously donated " + to_string(count) + " Diamond Lock in World: " + pInfo(peer)->world + ".");
+									if (pInfo(peer)->lastchoosenitem == 242 and count == 200) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously donated " + to_string(count) + " World Lock in World: " + pInfo(peer)->world + ".");
 									modify_inventory(peer, pInfo(peer)->lastchoosenitem, count *= -1);
 								}
 							}
@@ -3358,12 +5210,462 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|builder_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|fishing_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|geiger_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|farmer_reward\n\n" || cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|provider_reward\n\n") {
-							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|farmer_reward\n\n") farmer_reward_show(peer);
-							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|provider_reward\n\n")provider_reward_show(peer);
-							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|geiger_reward\n\n") geiger_reward_show(peer);
-							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|fishing_reward\n\n") 	fishing_reward_show(peer);
-							if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|builder_reward\n\n")	builder_reward_show(peer);
+						else if (cch.find("action|dialog_return\ndialog_name|set_online_status\nbuttonClicked|set_online_status") != string::npos) {
+							pInfo(peer)->p_status = atoi(explode("\n", explode("checkbox_status_online|", cch)[1])[0].c_str()) == 1 ? 0 : atoi(explode("\n", explode("checkbox_status_busy|", cch)[1])[0].c_str()) == 1 ? 1 : atoi(explode("\n", explode("checkbox_status_away|", cch)[1])[0].c_str()) == 1 ? 2 : 0;
+							send_wrench_self(peer);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|personalize_profile\nbuttonClicked|save") != string::npos) {
+							pInfo(peer)->Show_Achievements = atoi(explode("\n", explode("checkbox_show_achievements|", cch)[1])[0].c_str()) == 1 ? true : false;
+							pInfo(peer)->Show_OwnedWorlds = atoi(explode("\n", explode("checkbox_show_ownworld_count|", cch)[1])[0].c_str()) == 1 ? true : false;
+							pInfo(peer)->Show_AccountCreated = atoi(explode("\n", explode("checkbox_show_account_created|", cch)[1])[0].c_str()) == 1 ? true : false;
+							if (pInfo(peer)->home_world != "") pInfo(peer)->Show_HomeWorld = atoi(explode("\n", explode("checkbox_show_homeworld|", cch)[1])[0].c_str()) == 1 ? true : false;
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|personalize_profile\nbuttonClicked|discard") != string::npos) {
+							send_wrench_self(peer);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|personalize_profile\nbuttonClicked|preview") != string::npos) {
+							pInfo(peer)->Show_Achievements = atoi(explode("\n", explode("checkbox_show_achievements|", cch)[1])[0].c_str()) == 1 ? true : false;
+							pInfo(peer)->Show_OwnedWorlds = atoi(explode("\n", explode("checkbox_show_ownworld_count|", cch)[1])[0].c_str()) == 1 ? true : false;
+							pInfo(peer)->Show_AccountCreated = atoi(explode("\n", explode("checkbox_show_account_created|", cch)[1])[0].c_str()) == 1 ? true : false;
+							if (pInfo(peer)->home_world != "") pInfo(peer)->Show_HomeWorld = atoi(explode("\n", explode("checkbox_show_homeworld|", cch)[1])[0].c_str()) == 1 ? true : false;
+							time_t s__;
+							s__ = time(NULL);
+							int days_ = int(s__) / (60 * 60 * 24);
+							DialogBuilder preview("`o");
+							preview.add_label_icon(true, 18, (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "`` `0(```2" + (pInfo(peer)->dev && pInfo(peer)->d_name.empty() ? "???" : to_string(pInfo(peer)->level)) + "```0)``")
+								.add_spacer(false);
+							if (pInfo(peer)->Show_OwnedWorlds) {
+								preview.add_spacer(false)
+									.add_label(false, "`1Owned Worlds:`` " + to_string(pInfo(peer)->worlds_owned.size()));
+							}
+							if (pInfo(peer)->Show_AccountCreated) {
+								preview.add_spacer(false)
+									.add_label(false, "`1Account Age: `` " + to_string(days_ - pInfo(peer)->account_created) + " days");
+							}
+							if (pInfo(peer)->home_world != "" && pInfo(peer)->Show_HomeWorld) {
+								preview.add_spacer(false)
+									.add_label(false, "`1Home World:``")
+									.add_disabled_button("visit_home_world_" + pInfo(peer)->home_world, "`$Visit " + pInfo(peer)->home_world + "``");
+							}
+							preview.add_spacer(false)
+								.add_disabled_button("trade", "`wTrade``")
+								.add_textbox("(No Battle Leash equipped)")
+								.add_disabled_button("friend_add", "`wAdd as friend``")
+								.add_disabled_button("ignore_player", "`wIgnore Player``")
+								.add_disabled_button("report_player", "`wReport Player``")
+								.end_dialog("personalize_profile", "", "Back")
+								.add_quick_exit();
+							enet_peer_send(peer, 0, Variant{ "OnDialogRequest" }.push(preview.to_string()).pack());
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|personalize_profile") != string::npos) {
+							SendDialogPersonalizeProfile(peer);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|bouncer_dialog\nbuttonClicked|gems_") != string::npos) {
+							int wl = 0, dl = 0;
+							modify_inventory(peer, 242, wl);
+							modify_inventory(peer, 1796, dl);
+							DialogBuilder confirm;
+							int itemChoosed = atoi(cch.substr(67, cch.length() - 67).c_str());
+							switch (itemChoosed) {
+							case 50000: {
+								confirm.add_label_icon(true, 9490, "`eBuy 50.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 50.000 Gems - Voucher do you want to buy, for 100.000 ė each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 100000: {
+								confirm.add_label_icon(true, 9492, "`eBuy 100.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 100.000 Gems - Voucher do you want to buy, for 200.000 ė each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 250000: {
+								confirm.add_label_icon(true, 9494, "`eBuy 250.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 250.000 Gems - Voucher do you want to buy, for 500.000 ė each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 500000: {
+								confirm.add_label_icon(true, 9496, "`eBuy 500.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 500.000 Gems - Voucher do you want to buy, for 1.000.000 ė each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 1000000: {
+								confirm.add_label_icon(true, 9498, "`eBuy 1.000.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 1.000.000 Gems - Voucher do you want to buy, for 2.000.000 ė each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 50: {
+								confirm.add_label_icon(true, 9490, "`eBuy 50.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 50.000 Gems - Voucher do you want to buy, for 50 ā each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 100: {
+								confirm.add_label_icon(true, 9492, "`eBuy 100.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 100.000 Gems - Voucher do you want to buy, for 100 ā each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 250: {
+								confirm.add_label_icon(true, 9494, "`eBuy 250.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 250.000 Gems - Voucher do you want to buy, for 250 ā each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 500: {
+								confirm.add_label_icon(true, 9496, "`eBuy 500.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 500.000 Gems - Voucher do you want to buy, for 500 ā each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							case 1000: {
+								confirm.add_label_icon(true, 9498, "`eBuy 1.000.000 Gems - Voucher?``")
+									.add_smalltext("`2Consume this voucher to earn amount of gems``")
+									.add_spacer(false)
+									.add_textbox("How many 1.000.000 Gems - Voucher do you want to buy, for 1000 ā each?")
+									.add_text_input(5, "how", "", "1")
+									.add_smalltext("`9You have " + (wl != 0 ? to_string(wl) + " World Locks" : "") + "" + (dl != 0 ? ", " + to_string(dl) + " Diamond Lock." : ".") + "<CR>You also have " + fixint(pInfo(peer)->gems) + " ė in your pocket.``")
+									.add_spacer(false)
+									.add_button("bouncer_gemsbuy", "`9Purchase``")
+									.add_button("bouncer_backButton", "`wNo Thanks``")
+									.embed_data(false, "gemsbuy", to_string(itemChoosed));
+								break;
+							}
+							default: break;
+							}
+							confirm.add_quick_exit();
+							enet_peer_send(peer, 0, Variant{ "OnDialogRequest" }.push(confirm.to_string()).pack());
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|kit_dialog\n") != string::npos) {
+							if (cch.find("buttonClicked|info_kit1") != string::npos) {
+								SendInfoKitDialog(peer, 1);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit2") != string::npos) {
+								SendInfoKitDialog(peer, 2);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit3") != string::npos) {
+								SendInfoKitDialog(peer, 3);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit4") != string::npos) {
+								SendInfoKitDialog(peer, 4);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit5") != string::npos) {
+								SendInfoKitDialog(peer, 5);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit6") != string::npos) {
+								SendInfoKitDialog(peer, 6);
+								break;
+							}
+							else if (cch.find("buttonClicked|info_kit7") != string::npos) {
+								SendInfoKitDialog(peer, 7);
+								break;
+							}
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|info_kit_dialog\n") != string::npos) {
+							if (cch.find("buttonClicked|claim_kit1") != string::npos) {
+								if (not pInfo(peer)->kit1) {
+									int free = get_free_slots(pInfo(peer)), slot = 1, addItem = 0, adaBrp = 0;
+									if (free >= slot) {
+										if (modify_inventory(peer, 5140, addItem = 3) == 0) {
+											pInfo(peer)->kit1 = true;
+											Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Mystery Box Kit");
+										}
+										else Algorithm::send_bubble(peer, pInfo(peer)->netID, "You don't have enough room in your inventory");
+									}
+									else Algorithm::send_bubble(peer, pInfo(peer)->netID, "There is no empty slot in your inventory");
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit2") != string::npos) {
+								if (not pInfo(peer)->kit2) {
+									int free = get_free_slots(pInfo(peer)), slot = 4, addItem = 0, adaBrp = 0;
+									if (free >= slot) {
+										if (modify_inventory(peer, 10004, addItem = 3) == 0 and modify_inventory(peer, 836, addItem = 10) == 0 and modify_inventory(peer, 1680, addItem = 1) == 0 and modify_inventory(peer, 834, addItem = 1) == 0) {
+											pInfo(peer)->kit2 = true;
+											Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Gacha Kit");
+										}
+										else Algorithm::send_bubble(peer, pInfo(peer)->netID, "You don't have enough room in your inventory");
+									}
+									else Algorithm::send_bubble(peer, pInfo(peer)->netID, "There is no empty slot in your inventory");
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit3") != string::npos) {
+								if (not pInfo(peer)->kit3) {
+									if (pInfo(peer)->supp == 0) {
+										pInfo(peer)->kit3 = true;
+										pInfo(peer)->supp = 1;
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Supporter Kit");
+									}
+									else {
+										pInfo(peer)->kit3 = true;
+										pInfo(peer)->gems += 100000;
+										Algorithm::set_bux(peer);
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Supporter Kit");
+										Algorithm::send_console(peer, "You already have `2Supporter ``converted prize into `w100.000 Gems``");
+									}
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit4") != string::npos) {
+								if (not pInfo(peer)->kit4) {
+									int free = get_free_slots(pInfo(peer)), slot = 1, addItem = 0, adaBrp = 0;
+									if (free >= slot) {
+										if (modify_inventory(peer, 9538, addItem = 3) == 0) {
+											pInfo(peer)->kit4 = true;
+											Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Wooden Booty Chest Kit");
+										}
+										else Algorithm::send_bubble(peer, pInfo(peer)->netID, "You don't have enough room in your inventory");
+									}
+									else Algorithm::send_bubble(peer, pInfo(peer)->netID, "There is no empty slot in your inventory");
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit5") != string::npos) {
+								if (not pInfo(peer)->kit5) {
+									if (pInfo(peer)->supp != 2) {
+										pInfo(peer)->kit5 = true;
+										pInfo(peer)->supp = 2;
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Super Supporter Kit");
+									}
+									else {
+										pInfo(peer)->kit5 = true;
+										pInfo(peer)->gems += 250000;
+										Algorithm::set_bux(peer);
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Super Supporter Kit");
+										Algorithm::send_console(peer, "You already have `5Super Supporter ``converted prize into `w250.000 Gems``");
+									}
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit6") != string::npos) {
+								if (not pInfo(peer)->kit6) {
+									if (not pInfo(peer)->titleStartopia) {
+										pInfo(peer)->kit6 = true;
+										pInfo(peer)->titleStartopia = true;
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Title Kit");
+									}
+									else {
+										pInfo(peer)->kit6 = true;
+										pInfo(peer)->gems += 100000;
+										Algorithm::set_bux(peer);
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Title Kit");
+										Algorithm::send_console(peer, "You already have `wStartopia Title ``converted prize into `w100.000 Gems``");
+									}
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit7") != string::npos) {
+								if (not pInfo(peer)->kit7) {
+									if (not pInfo(peer)->unlockRoleSkin) {
+										pInfo(peer)->kit7 = true;
+										pInfo(peer)->unlockRoleSkin = true;
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Extra Skin Kit");
+									}
+									else {
+										pInfo(peer)->kit7 = true;
+										pInfo(peer)->gems += 200000;
+										Algorithm::set_bux(peer);
+										Algorithm::send_bubble(peer, pInfo(peer)->netID, "Claimed Free Extra Skin Kit");
+										Algorithm::send_console(peer, "You already have `wExtra Skin ``converted prize into `w200.000 Gems``");
+									}
+								}
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit8") != string::npos) {
+								Algorithm::send_overlay(peer, "Coming Soon!");
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit9") != string::npos) {
+								Algorithm::send_overlay(peer, "Coming Soon!");
+								break;
+							}
+							else if (cch.find("buttonClicked|claim_kit10") != string::npos) {
+								Algorithm::send_overlay(peer, "Coming Soon!");
+								break;
+							}
+							else SendCmd(peer, "/kit");
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|start_kit_dialog") != string::npos) {
+							if (not pInfo(peer)->startedKit) {
+								string ip;
+								ip = pInfo(peer)->ip;
+								auto path = "./database/registered/kit/" + ip + ".json";
+								bool udahAda = std::filesystem::exists(path);
+								if (not udahAda) {
+									ofstream newRegister(path, std::ios_base::trunc | std::ios_base::out);
+									json j;
+									j["Account"] = pInfo(peer)->tankIDName;
+									j["AccountUID"] = pInfo(peer)->uid;
+									pInfo(peer)->startedKit = true;
+									pInfo(peer)->lvlKit = 1;
+									newRegister << j << endl;
+									newRegister.close();
+									SendKitDialog(peer);
+									break;
+								}
+								else {
+									string username = "";
+									int uid = 0;
+									ifstream ifs("database/registered/kit/" + ip + ".json");
+									if (ifs.is_open()) {
+										json j;
+										ifs >> j;
+										username = j["Account"].get<string>();
+										uid = j["AccountUID"].get<int>();
+									}
+									Algorithm::send_console(peer, "`7Failed to start kit already registered on this ip address (``" + ip + "`7) with username " + username + " (#" + to_string(uid) + ")");
+									break;
+								}
+							}
+							else break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|backpack_menu\nbuttonClicked|") != string::npos) {
+							int choosen_item = atoi(cch.substr(61, cch.length() - 61).c_str());
+							if (choosen_item >= pInfo(peer)->bp.size() || choosen_item > 200 || choosen_item > pInfo(peer)->b_l * 10) break;
+							for (int i_ = 0; i_ < pInfo(peer)->bp.size(); i_++) {
+								if (choosen_item == i_) {
+									if (pInfo(peer)->bp[choosen_item].first <= 0 || pInfo(peer)->bp[choosen_item].first >= items.size()) break;
+									int pickedup = pInfo(peer)->bp[choosen_item].second;
+									int count = pInfo(peer)->bp[choosen_item].second;
+									if (modify_inventory(peer, pInfo(peer)->bp[choosen_item].first, count) == 0) {
+										{
+											gamepacket_t p, p2;
+											p.Insert("OnConsoleMessage"), p.Insert("You picked up " + to_string(pickedup) + " " + items[pInfo(peer)->bp[choosen_item].first].name + "."), p.CreatePacket(peer);
+											p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p.Insert("You picked up " + to_string(pickedup) + " " + items[pInfo(peer)->bp[choosen_item].first].name + "."), p2.CreatePacket(peer);
+										}
+										PlayerMoving data_{};
+										data_.packetType = 19, data_.punchX = pInfo(peer)->bp[choosen_item].first, data_.x = pInfo(peer)->x + 10, data_.y = pInfo(peer)->y + 16;
+										int32_t to_netid = pInfo(peer)->netID;
+										BYTE* raw = packPlayerMoving(&data_);
+										raw[3] = 5;
+										memcpy(raw + 8, &to_netid, 4);
+										send_raw(peer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+										delete[]raw;
+										pInfo(peer)->bp.erase(pInfo(peer)->bp.begin() + i_);
+									}
+									else {
+										gamepacket_t p;
+										p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("You don't have enough inventory space!"), p.CreatePacket(peer);
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|backpack_menu\nitemid|") != string::npos) {
+							if (pInfo(peer)->bp.size() <= pInfo(peer)->b_l * 10) {
+								int got = 0, item = atoi(cch.substr(54, cch.length() - 54).c_str());
+								modify_inventory(peer, item, got);
+								if (got <= 0) break;
+								if (item == 18 || item == 32 || item == 5640 || item == 1424 || items[item].blockType == BlockTypes::FISH || item == 5816) {
+									gamepacket_t p;
+									p.Insert("OnTalkBubble");
+									p.Insert(pInfo(peer)->netID);
+									p.Insert("You can't store this item!");
+									p.Insert(0), p.Insert(0);
+									p.CreatePacket(peer);
+								}
+								else if (check_transmuted(peer, item)) {
+									gamepacket_t p;
+									p.Insert("OnTalkBubble");
+									p.Insert(pInfo(peer)->netID);
+									p.Insert("You can't store transmuted item!");
+									p.Insert(0), p.Insert(0);
+									p.CreatePacket(peer);
+								}
+								else {
+									pInfo(peer)->bp.push_back(make_pair(item, got));
+									modify_inventory(peer, item, got *= -1);
+									PlayerMoving data_{};
+									data_.packetType = 19, data_.punchX = item, data_.x = pInfo(peer)->x + 10, data_.y = pInfo(peer)->y + 16;
+									int32_t to_netid = pInfo(peer)->netID;
+									BYTE* raw = packPlayerMoving(&data_);
+									raw[3] = 5;
+									memcpy(raw + 8, &to_netid, 4);
+									send_raw(peer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+									delete[]raw;
+									backpack_show(peer);
+								}
+							}
 							break;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|dialog_eq_aura\nbutton_item_selection|") != string::npos) {
@@ -3474,19 +5776,6 @@ int main(int argc, char* argv[]) {
 								}
 							}
 							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|viewnetwork") != string::npos) {
-							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-								if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-									string worlds_owned_ = "";
-									for (int w_ = 0; w_ < pInfo(currentPeer)->worlds_owned.size(); w_++) worlds_owned_ += pInfo(currentPeer)->worlds_owned[w_] + ", ";
-									gamepacket_t p;
-									p.Insert("OnDialogRequest");
-									p.Insert("\nadd_label|big|" + pInfo(peer)->last_wrenched + "'s Network and Assets|\nadd_spacer|small|\nadd_textbox|`6Network Info``|left|\nadd_smalltext|Status: `2ONLINE``|left|\nadd_smalltext | IP: `5" + pInfo(currentPeer)->ip + "``|left|\nadd_smalltext|RID: `5" + pInfo(currentPeer)->rid + "``|left|\nadd_smalltext|MAC Address: `5" + pInfo(currentPeer)->mac + "``|left|\nadd_smalltext|Country Code: `5" + to_upper(pInfo(currentPeer)->country) + "``|left|\nadd_spacer|small\nadd_textbox|`6Assets Info``|left|Ranks: `5[``" + (pInfo(currentPeer)->supp == 1 ? "`2Supporter``/" : pInfo(currentPeer)->supp == 2 ? "`5Super Supporter``/" : "`4NOT_SUPPORTER``") + (pInfo(currentPeer)->mod == 1 ? "`#Moderator``/" : "") + (pInfo(currentPeer)->smod == 1 ? "`#Super Moderator``/" : "") + (pInfo(currentPeer)->dev == 1 ? "`6Developer``/" : "") + (pInfo(currentPeer)->superdev == 1 ? "`6Super Developer" : "") + "`5]``|left|\nadd_smalltext|Online Star: `5" + setGems(pInfo(currentPeer)->opc) + "``|\nadd_smalltext|Level: `5" + to_string(pInfo(currentPeer)->level) + "``|left|\nadd_smalltext|Gems: `5" + setGems(pInfo(currentPeer)->gems) + "``|left|\nadd_smalltext|XP: `5" + setGems(pInfo(currentPeer)->xp) + "``|left|\nadd_smalltext|Owned Worlds: `5" + worlds_owned_ + "``|left|\nadd_smalltext|This player needs " + setGems((50 * (pInfo(currentPeer)->level * pInfo(currentPeer)->level) + 2) - pInfo(currentPeer)->xp) + " XP to be level " + to_string(pInfo(currentPeer)->level + 1) + "|left|\nadd_smalltext|This account was created `w~`` days ago.``|left|\nadd_spacer|small|\nend_dialog||OK!||\nadd_quick_exit|\n");
-									p.CreatePacket(peer);
-								}
-							}
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|view_inventory\nbuttonClicked|") != string::npos) {
 							if (pInfo(peer)->superdev) {
@@ -3830,7 +6119,7 @@ int main(int argc, char* argv[]) {
 											if (letter == 21) world_->bulletin.erase(world_->bulletin.begin() + 0);
 											WorldBulletin bulletin_{};
 											bulletin_.x = pInfo(peer)->lastwrenchx, bulletin_.y = pInfo(peer)->lastwrenchy;
-											if (pInfo(peer)->name_color == "`4@Dr. " || pInfo(peer)->name_color == "`6@" || pInfo(peer)->name_color == "`9@" || pInfo(peer)->name_color == "`#@" || pInfo(peer)->name_color == "`0") bulletin_.name = (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "``";
+											if (pInfo(peer)->name_color == "`4@Dr." || pInfo(peer)->name_color == "`6@" || pInfo(peer)->name_color == "`9@" || pInfo(peer)->name_color == "`#@" || pInfo(peer)->name_color == "`0") bulletin_.name = (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + "``";
 											else bulletin_.name = "`0" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) + "``";
 											bulletin_.text = text;
 											world_->bulletin.push_back(bulletin_);
@@ -3979,6 +6268,14 @@ int main(int argc, char* argv[]) {
 								gamepacket_t p;
 								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("You can't store Tradeable items there!"), p.CreatePacket(peer);
 							}
+							else if (check_transmuted(peer, pInfo(peer)->lastchoosenitem)) {
+								gamepacket_t p;
+								p.Insert("OnTalkBubble"),
+									p.Insert(pInfo(peer)->netID),
+									p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+									p.CreatePacket(peer);
+								break;
+							}
 							else {
 								int got = 0, receive = 0;
 								modify_inventory(peer, pInfo(peer)->lastchoosenitem, got);
@@ -4029,631 +6326,6 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|punish_view\nbuttonClicked|ipban") != string::npos) {
-							if (pInfo(peer)->dev == 1) {
-								if (to_lower(pInfo(peer)->last_wrenched) == "ritshu") break;
-								string his_ip = "";
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-									if (to_lower(pInfo(currentPeer)->tankIDName) == to_lower(pInfo(peer)->last_wrenched)) {
-										add_ban(currentPeer, 6.307e+7, "No Reason Provided", pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
-										writelog(pInfo(peer)->tankIDName + " IP Banned (" + pInfo(currentPeer)->ip + ") - " + pInfo(currentPeer)->tankIDName);
-										add_ipban(currentPeer);
-									}
-								}
-								if (not his_ip.empty()) {
-									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-										if (pInfo(currentPeer)->ip == pInfo(peer)->ip) {
-											add_ban(currentPeer, 6.307e+7, "No Reason Provided", pInfo(peer)->name_color + pInfo(peer)->tankIDName + "``");
-											writelog(pInfo(peer)->tankIDName + " IP Banned (" + pInfo(currentPeer)->ip + ") - " + pInfo(currentPeer)->tankIDName);
-											add_ipban(currentPeer);
-										}
-									}
-								}
-							}
-							break;
-						}
-						else if (cch.find("action|drop") != string::npos) {
-							string name_ = pInfo(peer)->world;
-							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-							if (p != worlds.end()) {
-								World* world_ = &worlds[p - worlds.begin()];
-								vector<string> t_ = explode("|", cch);
-								if (t_.size() < 4) break;
-								int id_ = atoi(explode("\n", t_[3])[0].c_str()), c_ = 0;
-								if (id_ <= 0 or id_ >= items.size()) break;
-								if (find(world_->active_jammers.begin(), world_->active_jammers.end(), 4758) != world_->active_jammers.end()) {
-									if (world_->owner_name != (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) and not pInfo(peer)->dev and find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) {
-										gamepacket_t p;
-										p.Insert("OnTalkBubble");
-										p.Insert(pInfo(peer)->netID);
-										p.Insert("The Mini-Mod says no dropping items in this world!");
-										p.Insert(0), p.Insert(0);
-										p.CreatePacket(peer);
-										break;
-									}
-								}
-								if (items[id_].untradeable or id_ == 1424) {
-									gamepacket_t p;
-									p.Insert("OnTextOverlay");
-									p.Insert("You can't drop that.");
-									p.CreatePacket(peer);
-									break;
-								}
-								string name_ = pInfo(peer)->world;
-								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-								if (p != worlds.end()) {
-									World* world_ = &worlds[p - worlds.begin()];
-									int a_ = rand() % 12;
-									int x = (pInfo(peer)->state == 16 ? pInfo(peer)->x - (a_ + 20) : (pInfo(peer)->x + 20) + a_);
-									int y = pInfo(peer)->y + rand() % 16;
-									//BlockTypes type_ = FOREGROUND;
-									int where_ = (pInfo(peer)->state == 16 ? x / 32 : round((double)x / 32)) + (y / 32 * 100);
-									if (where_ < 0 || x < 0 || y < 0 || where_ > 5399) continue;
-									WorldBlock* block_ = &world_->blocks[where_];
-									if (items[block_->fg].collisionType == 1 || block_->fg == 6 || items[block_->fg].entrance || items[block_->fg].toggleable and is_false_state(world_->blocks[(pInfo(peer)->state == 16 ? x / 32 : round((double)x / 32)) + (y / 32 * 100)], 0x00400000)) {
-										gamepacket_t p;
-										p.Insert("OnTextOverlay");
-										p.Insert(items[block_->fg].blockType == BlockTypes::MAIN_DOOR ? "You can't drop items on the white door." : "You can't drop that here, face somewhere with open space.");
-										p.CreatePacket(peer);
-										break;
-									}
-									int count_ = 0;
-									bool dublicated = false;
-									for (int i_ = 0; i_ < world_->drop.size(); i_++) {
-										if (abs(world_->drop[i_].y - y) <= 16 and abs(world_->drop[i_].x - x) <= 16) {
-											count_ += 1;
-										}
-										if (world_->drop[i_].id == id_) if (world_->drop[i_].count < 200) dublicated = true;
-									}
-									if (!dublicated) {
-										if (count_ > 20) {
-											gamepacket_t p;
-											p.Insert("OnTextOverlay");
-											p.Insert("You can't drop that here, find an emptier spot!");
-											p.CreatePacket(peer);
-											break;
-										}
-									}
-								}
-								modify_inventory(peer, id_, c_);
-								{
-									gamepacket_t p;
-									p.Insert("OnDialogRequest");
-									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|How many to drop?|left|\nadd_text_input|count||" + to_string(c_) + "|5|\nembed_data|itemID|" + to_string(id_) + "" + (world_->owner_name != pInfo(peer)->tankIDName and not pInfo(peer)->dev and (!guild_access(peer, world_->guild_id) and find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) ? "\nadd_textbox|If you are trying to trade an item with another player, use your wrench on them instead to use our Trade System! `4Dropping items is not safe!``|left|" : "") + "\nend_dialog|drop_item|Cancel|OK|");
-									p.CreatePacket(peer);
-								}
-							}
-							break;
-						}
-						else if (cch.find("action|setRoleIcon") != string::npos || cch.find("action|setRoleSkin") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 3) break;
-							string id_ = explode("\n", t_[2])[0];
-							if (not isdigit(id_[0])) break;
-							uint32_t role_t = atoi(id_.c_str());
-							if (cch.find("action|setRoleIcon") != string::npos) {
-								if (role_t == 6) pInfo(peer)->roleIcon = role_t;
-								else if (role_t == 0 and pInfo(peer)->t_lvl >= 50) pInfo(peer)->roleIcon = role_t;
-								else if (role_t == 1 and pInfo(peer)->bb_lvl >= 50) pInfo(peer)->roleIcon = role_t;
-							}
-							else {
-								if (role_t == 6) pInfo(peer)->roleSkin = role_t;
-								else if (role_t == 0 and pInfo(peer)->t_lvl >= 50) pInfo(peer)->roleSkin = role_t;
-								else if (role_t == 1 and pInfo(peer)->bb_lvl >= 50) pInfo(peer)->roleSkin = role_t;
-							}
-							gamepacket_t p(0, pInfo(peer)->netID);
-							p.Insert("OnSetRoleSkinsAndIcons"), p.Insert(pInfo(peer)->roleSkin), p.Insert(pInfo(peer)->roleIcon), p.Insert(0);
-							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
-								p.CreatePacket(currentPeer);
-							}
-							break;
-						}
-						else if (cch.find("action|setSkin") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 3) break;
-							string id_ = explode("\n", t_[2])[0];
-							if (not isdigit(id_[0])) break;
-							char* endptr = NULL;
-							unsigned int skin_ = strtoll(id_.c_str(), &endptr, 10);
-							if (skin_ == 3531226367 and pInfo(peer)->supp == 2 or skin_ == 4023103999 and pInfo(peer)->supp == 2 or skin_ == 1345519520 and pInfo(peer)->supp == 2 or skin_ == 194314239 and pInfo(peer)->supp == 2) pInfo(peer)->skin = skin_;
-							else if (skin_ == 3578898848 and pInfo(peer)->gp or skin_ == 3317842336 and pInfo(peer)->gp) pInfo(peer)->skin = skin_;
-							else if (skin_ != 1348237567 and skin_ != 1685231359 and skin_ != 2022356223 and skin_ != 2190853119 and skin_ != 2527912447 and skin_ != 2864971775 and skin_ != 3033464831 and skin_ != 3370516479) {
-								if (pInfo(peer)->supp >= 1) {
-									if (skin_ != 2749215231 and skin_ != 3317842431 and skin_ != 726390783 and skin_ != 713703935 and skin_ != 3578898943 and skin_ != 4042322175) break;
-									else pInfo(peer)->skin = skin_;
-								}
-								else break;
-							}
-							else pInfo(peer)->skin = skin_;
-							update_clothes(peer);
-							break;
-						}
-						else if (cch.find("action|trash") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							int id_ = atoi(explode("\n", t_[3])[0].c_str()), c_ = 0;
-							if (id_ <= 0 or id_ >= items.size()) break;
-							gamepacket_t p;
-							if (id_ == 18 || id_ == 32 || id_ == 6336) {
-								packet_(peer, "action|play_sfx\nfile|audio/cant_place_tile.wav\ndelayMS|0");
-								p.Insert("OnTextOverlay"), p.Insert("You'd be sorry if you lost that!"), p.CreatePacket(peer);
-								break;
-							}
-							modify_inventory(peer, id_, c_); // gauna itemo kieki
-							p.Insert("OnDialogRequest");
-							if (pInfo(peer)->supp == 0) p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Trash`` `w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|How many to `4destroy``? (you have " + to_string(c_) + ")|left|\nadd_text_input|count||0|5|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|trash_item|Cancel|OK|");
-							else {
-								int item = id_, maxgems = 0, maximum_gems = 0;
-								if (id_ % 2 != 0) item -= 1;
-								maxgems = items[item].max_gems2;
-								if (items[item].max_gems3 != 0) maximum_gems = items[item].max_gems3;
-								string recycle_text = "0" + (maxgems == 0 ? "" : "-" + to_string(maxgems)) + "";
-								if (maximum_gems != 0) recycle_text = to_string(maximum_gems);
-								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Recycle`` `w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|You will get " + recycle_text + " gems per item.|\nadd_textbox|How many to `4destroy``? (you have " + to_string(c_) + ")|left|\nadd_text_input|count||0|5|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|trash_item|Cancel|OK|");
-							}
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|info") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							gamepacket_t p;
-							p.Insert("OnDialogRequest");
-							int id_ = atoi(explode("\n", t_[3])[0].c_str());
-							if (id_ % 2 != 0) p.Insert("set_default_color|`o\nadd_label_with_ele_icon|big|`wAbout " + items[id_].ori_name + "``|left|" + to_string(id_) + "|" + to_string(items[id_ - 1].chi) + "|\nadd_spacer|small|\nadd_textbox|Plant this seed to grow a `0" + items[id_ - 1].ori_name + " Tree.``|left|\nadd_spacer|small|\nadd_textbox|Rarity: `0" + to_string(items[id_].rarity) + "``|left|\nadd_spacer|small|\nend_dialog|continue||OK|\n");
-							else {
-								string extra_ = "\nadd_textbox|";
-								if (id_ == 18) {
-									extra_ += "You've punched `w" + to_string(pInfo(peer)->punch_count) + "`` times.";
-								} if (items[id_].blockType == BlockTypes::LOCK) {
-									extra_ += "A lock makes it so only you (and designated friends) can edit an area.";
-								} if (items[id_].r_1 == 0 or items[id_].r_2 == 0) {
-									extra_ += "<CR>This item can't be spliced.";
-								}
-								else {
-									extra_ += "Rarity: `w" + to_string(items[id_].rarity) + "``<CR><CR>To grow, plant a `w" + items[id_ + 1].name + "``.   (Or splice a `w" + items[items[id_].r_1].name + "`` with a `w" + items[items[id_].r_2].name + "``)<CR>";
-								} if (items[id_].properties & Property_Dropless or items[id_].rarity == 999) {
-									extra_ += "<CR>`1This item never drops any seeds.``";
-								} if (items[id_].properties & Property_Untradable) {
-									extra_ += "<CR>`1This item cannot be dropped or traded.``";
-								} if (items[id_].properties & Property_AutoPickup) {
-									extra_ += "<CR>`1This item can't be destroyed - smashing it will return it to your backpack if you have room!``";
-								} if (items[id_].properties & Property_Wrenchable) {
-									extra_ += "<CR>`1This item has special properties you can adjust with the Wrench.``";
-								} if (items[id_].properties & Property_MultiFacing) {
-									extra_ += "<CR>`1This item can be placed in two directions, depending on the direction you're facing.``";
-								} if (items[id_].properties & Property_NoSelf) {
-									extra_ += "<CR>`1This item has no use... by itself.``";
-								}
-								extra_ += "|left|";
-								if (extra_ == "\nadd_textbox||left|") extra_ = "";
-								else extra_ = replace_str(extra_, "add_textbox|<CR>", "add_textbox|");
-
-								string extra_ore = "";
-								if (id_ == 9386) extra_ore = rare_text;
-								if (id_ == 9384) extra_ore = rare2_text;
-								if (id_ == 7782) extra_ore = rainbow_text;
-								p.Insert("set_default_color|`o\nadd_label_with_ele_icon|big|`wAbout " + items[id_].name + "``|left|" + to_string(id_) + "|" + to_string(items[id_].chi) + "|\nadd_spacer|small|\nadd_textbox|" + items[id_].description + "|left|" + (extra_ore != "" ? "\nadd_spacer|small|\nadd_textbox|This item also drops:|left|" + extra_ore : "") + "" + (id_ == 8552 ? "\nadd_spacer|small|\nadd_textbox|Angelic Healings: " + to_string(pInfo(peer)->surgery_done) + "|left|" : "") + "\nadd_spacer|small|" + extra_ + "\nadd_spacer|small|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|continue||OK|\n");
-							}
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|wrench") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							int netID = atoi(explode("\n", t_[3])[0].c_str());
-							if (pInfo(peer)->netID == netID) {
-								send_wrench_self(peer);
-							}
-							else {
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-									if (pInfo(currentPeer)->netID == netID and pInfo(currentPeer)->world == pInfo(peer)->world) {
-										bool already_friends = false, trade_blocked = false, muted = false;
-										for (int c_ = 0; c_ < pInfo(peer)->friends.size(); c_++) {
-											if (pInfo(peer)->friends[c_].name == pInfo(currentPeer)->tankIDName) {
-												already_friends = true;
-												if (pInfo(peer)->friends[c_].block_trade)
-													trade_blocked = true;
-												if (pInfo(peer)->friends[c_].mute)
-													muted = true;
-												break;
-											}
-										}
-										pInfo(peer)->last_wrenched = pInfo(currentPeer)->tankIDName;
-										string name_ = pInfo(peer)->world;
-										vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-										if (p != worlds.end()) {
-											World* world_ = &worlds[p - worlds.begin()];
-											string msg2 = "";
-											for (int i = 0; i < to_string(pInfo(currentPeer)->level).length(); i++) msg2 += "?";
-											string inv_guild = "";
-											string extra = "";
-											if (pInfo(currentPeer)->guild_id != 0) {
-												uint32_t guild_id = pInfo(currentPeer)->guild_id;
-												vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
-												if (find_guild != guilds.end()) {
-													Guild* guild_information = &guilds[find_guild - guilds.begin()];
-													for (GuildMember member_search : guild_information->guild_members) {
-														if (member_search.member_name == pInfo(currentPeer)->tankIDName) {
-															if (guild_information->guild_mascot[1] == 0 and guild_information->guild_mascot[0] == 0) {
-																extra += "\nadd_label_with_icon|small|`9Guild: `2" + guild_information->guild_name + "``|left|5814|\nadd_textbox|`9Rank: `2" + (member_search.role_id == 0 ? "Member" : (member_search.role_id == 1 ? "Elder" : (member_search.role_id == 2 ? "Co-Leader" : "Leader"))) + "``|left|\nadd_spacer|small|";
-															}
-															else {
-																extra += "\nadd_dual_layer_icon_label|small|`9Guild: `2" + guild_information->guild_name + "``|left|" + to_string(guild_information->guild_mascot[1]) + "|" + to_string(guild_information->guild_mascot[0]) + "|1.0|1|\nadd_smalltext|`9Rank: `2" + (member_search.role_id == 0 ? "Member" : (member_search.role_id == 1 ? "Elder" : (member_search.role_id == 2 ? "Co-Leader" : "Leader"))) + "``|left|\nadd_spacer|small|";
-															}
-															break;
-														}
-													}
-												}
-											} if (pInfo(peer)->guild_id != 0 and pInfo(currentPeer)->guild_id == 0) {
-												uint32_t guild_id = pInfo(peer)->guild_id;
-												vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
-												if (find_guild != guilds.end()) {
-													Guild* guild_information = &guilds[find_guild - guilds.begin()];
-													for (GuildMember member_search : guild_information->guild_members) {
-														if (member_search.member_name == pInfo(peer)->tankIDName) {
-															if (member_search.role_id >= 1) {
-																inv_guild = "\nadd_button|invitetoguild|`2Invite to Guild``|noflags|0|0|";
-															}
-															break;
-														}
-													}
-												}
-											}
-											string surgery = "\nadd_spacer|small|\nadd_button|start_surg|`$Perform Surgery``|noflags|0|0|\nadd_smalltext|Surgeon Skill: " + to_string(pInfo(peer)->surgery_skill) + "|left|";
-											for (int i_ = 0; i_ < pInfo(currentPeer)->playmods.size(); i_++) if (pInfo(currentPeer)->playmods[i_].id == 89) surgery = "\nadd_spacer|small|\nadd_textbox|Recovering from surgery...|left|";
-											if (pInfo(currentPeer)->hospital_bed == false) surgery = "";
-											gamepacket_t p;
-											p.Insert("OnDialogRequest");
-											p.Insert("embed_data|netID|" + to_string(pInfo(peer)->netID) + "\nset_default_color|`o\nadd_label_with_icon|big|" + (pInfo(currentPeer)->mod == 1 || pInfo(currentPeer)->dev == 1 ? pInfo(currentPeer)->name_color : "`0") + "" + (not pInfo(currentPeer)->d_name.empty() ? pInfo(currentPeer)->d_name : pInfo(currentPeer)->tankIDName) + "`` `0(```2" + (pInfo(currentPeer)->dev == 1 ? msg2 : to_string(pInfo(currentPeer)->level)) + "```0)``|left|18|" + surgery + "\nembed_data|netID|" + to_string(netID) + "\nadd_spacer|small|" + extra + (trade_blocked ? "\nadd_button||`4Trade Blocked``|disabled|||" : "\nadd_button|trade|`wTrade``|noflags|0|0|") + "\nadd_textbox|(No Battle Leash equipped)|left|\nadd_textbox|Your opponent needs a valid license to battle!|left|" + (world_->owner_name == pInfo(peer)->tankIDName or (guild_access(peer, world_->guild_id) or find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) != world_->admins.end()) or pInfo(peer)->dev + pInfo(peer)->mod > 0 ? "\nadd_button|kick|`4Kick``|noflags|0|0|\nadd_button|pull|`5Pull``|noflags|0|0|\nadd_button|worldban|`4World Ban``|noflags|0|0|" : "") + (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1 ? "\nadd_button|punish_view|`5Punish/View``|noflags|0|0|" : "") + inv_guild + (!already_friends ? "\nadd_button|friend_add|`wAdd as friend``|noflags|0|0|" : "") + (muted ? "\nadd_button|unmute_player|`wUnmute``|noflags|0|0|" : (already_friends ? "\nadd_button|mute_player|`wMute``|noflags|0|0|" : "")) + ""/*"\nadd_button|ignore_player|`wIgnore Player``|noflags|0|0|\nadd_button|report_player|`wReport Player``|noflags|0|0|"*/"\nadd_spacer|small|\nend_dialog|popup||Continue|\nadd_quick_exit|");
-											p.CreatePacket(peer);
-										}
-										break;
-									}
-								}
-							}
-							break;
-						}
-						else if (cch.find("action|friends") != string::npos) {
-							send_social(peer);
-							break;
-						}
-						else if (cch == "action|battlepasspopup\n") {
-							gamepacket_t p(550);
-							p.Insert("OnDialogRequest");
-							int growpassid = 6124;
-							if (today_day == pInfo(peer)->gd) growpassid = 6292;
-							if (pInfo(peer)->gp == 1) p.Insert("set_default_color|`o\nadd_label_with_icon|big|Grow Pass Rewards|left|9222|\nadd_smalltext|`9You can claim your daily reward everyday here.``|left|\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|claim_reward||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nend_dialog|worlds_list||Back|\nadd_quick_exit|\n");
-							else p.Insert("set_default_color|`o\nadd_label_with_icon|big|Grow Pass Rewards|left|9222|\nadd_button|deposit|`2Purchase``|noflags|0|0|\nadd_smalltext|`4You must purchase the Grow Pass role to claim your prize!``|left|\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon|||staticBlueFrame|" + to_string(growpassid) + "||\nadd_button_with_icon||END_LIST|noflags|0||\nadd_spacer|small|\nend_dialog|||Back|\nadd_quick_exit|\n");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|storenavigate\nitem|main\nselection|deposit\n" || cch == "action|storenavigate\nitem|locks\nselection|upgrade_backpack\n" || cch == "action|storenavigate\nitem|main\nselection|bonanza\n" || cch == "action|storenavigate\nitem|main\nselection|calendar\n" || cch == "action|store\nlocation|bottommenu\n" || cch == "action|store\nlocation|gem\n" || cch == "action|store\nlocation|pausemenu\n" || cch == "action|storenavigate\nitem|main\nselection|gems_rain\n") {
-							if (cch == "action|store\nlocation|bottommenu\n" || cch == "action|store\nlocation|gem\n" || cch == "action|store\nlocation|pausemenu\n") shop_tab(peer, "tab1");
-							if (cch == "action|storenavigate\nitem|main\nselection|gems_rain\n") shop_tab(peer, "tab1_1");
-							if (cch == "action|storenavigate\nitem|main\nselection|calendar\n") shop_tab(peer, "tab1_2");
-							if (cch == "action|storenavigate\nitem|main\nselection|bonanza\n")	shop_tab(peer, "tab1_3");
-							if (cch == "action|storenavigate\nitem|locks\nselection|upgrade_backpack\n") shop_tab(peer, "tab2_1");
-							if (cch == "action|storenavigate\nitem|main\nselection|deposit\n") SendCmd(peer, "/deposit", true);
-							break;
-						}
-						else if (cch.find("action|buy") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 3) break;
-							string item = explode("\n", t_[2])[0];
-							int price = 0, free = get_free_slots(pInfo(peer)), slot = 1, getcount = 0, get_counted = 0, random_pack = 0, token = 0;
-							gamepacket_t p2;
-							p2.Insert("OnStorePurchaseResult");
-							if (item == "main") shop_tab(peer, "tab1");
-							else if (item == "locks") shop_tab(peer, "tab2");
-							else if (item == "itempack") shop_tab(peer, "tab3");
-							else if (item == "bigitems") shop_tab(peer, "tab4");
-							else if (item == "weather") shop_tab(peer, "tab5");
-							else if (item == "token") shop_tab(peer, "tab6");
-							else if (item == "upgrade_backpack") {
-								price = 100 * ((((pInfo(peer)->inv.size() - 17) / 10) * ((pInfo(peer)->inv.size() - 17) / 10)) + 1);
-								if (price > pInfo(peer)->gems) {
-									packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-									p2.Insert("You can't afford `0Upgrade Backpack`` (`w10 Slots``)!  You're `$" + setGems(price - pInfo(peer)->gems) + "`` Gems short.");
-								}
-								else {
-									if (pInfo(peer)->inv.size() < 246) {
-										{
-											gamepacket_t p;
-											p.Insert("OnConsoleMessage");
-											p.Insert("You've purchased `0Upgrade Backpack`` (`010 Slots``) for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems - price) + "`` Gems left.");
-											p.CreatePacket(peer);
-										}
-										p2.Insert("You've purchased `0Upgrade Backpack (10 Slots)`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems - price) + "`` Gems left.\n\n`5Received: ```0Backpack Upgrade``\n");
-										pInfo(peer)->gems -= price;
-										{
-											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-											gamepacket_t p;
-											p.Insert("OnSetBux");
-											p.Insert(pInfo(peer)->gems);
-											p.Insert(0);
-											p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-											if (pInfo(peer)->supp >= 2) {
-												p.Insert((float)33796, (float)1, (float)0);
-											}
-											p.CreatePacket(peer);
-										}
-										for (int i_ = 0; i_ < 10; i_++) { // default inv dydis
-											Items itm_{};
-											itm_.id = 0, itm_.count = 0;
-											pInfo(peer)->inv.push_back(itm_);
-										}
-										send_inventory(peer);
-										update_clothes(peer);
-										shop_tab(peer, "tab2");
-									}
-								}
-								p2.CreatePacket(peer);
-							}
-							else {
-								vector<int> list;
-								vector<vector<int>> itemai;
-								string item_name = "";
-								ifstream ifs("database/shop/-" + item + ".json");
-								if (ifs.is_open()) {
-									json j;
-									ifs >> j;
-									price = j["g"].get<int>();
-									item_name = j["p"].get<string>();
-									if (j.find("itemai") != j.end()) { // mano sistema
-										if (pInfo(peer)->gems < price) {
-											packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-											p2.Insert("You can't afford `o" + item_name + "``!  You're `$" + setGems(price - pInfo(peer)->gems) + "`` Gems short."), p2.CreatePacket(peer);
-											break;
-										}
-										itemai = j["itemai"].get<vector<vector<int>>>();
-										int reik_slots = itemai.size();
-										int turi_slots = get_free_slots(pInfo(peer));
-										for (vector<int> item_info : itemai) {
-											int turi_dabar = 0;
-											modify_inventory(peer, item_info[0], turi_dabar);
-											if (turi_dabar != 0) reik_slots--;
-											if (turi_dabar + item_info[1] > 200) goto fail;
-										}
-										if (turi_slots < reik_slots) goto fail;
-										{
-											//if (item == "g4good_Gem_Charity") grow4good(peer, false, "donate_gems", 0);
-											//if (item != "arm_guy" and item != "g4good_Gem_Charity") grow4good(peer, false, "gems", price);
-											pInfo(peer)->gems -= price;
-											gamepacket_t gem_upd;
-											gem_upd.Insert("OnSetBux"), gem_upd.Insert(pInfo(peer)->gems), gem_upd.Insert(0), gem_upd.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-											if (pInfo(peer)->supp >= 2) {
-												gem_upd.Insert((float)33796, (float)1, (float)0);
-											}
-											gem_upd.CreatePacket(peer);
-											vector<string> received_items{}, received_items2{};
-											for (vector<int> item_info : itemai) {
-												uint32_t item_id = item_info[0];
-												int item_count = item_info[1];
-												modify_inventory(peer, item_id, item_count);
-												received_items.push_back("Got " + to_string(item_info[1]) + " `#" + items[item_id].ori_name + "``."), received_items2.push_back(to_string(item_info[1]) + " " + items[item_id].ori_name);
-											}
-											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-											//if (item == "arm_guy") grow4good(peer, false, "purchase_waving", 0);
-											gamepacket_t p_;
-											p_.Insert("OnConsoleMessage"), p_.Insert("You've purchased `o" + item_name + "`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems) + "`` Gems left." + "\n" + join(received_items, "\n")), p_.CreatePacket(peer);
-											p2.Insert("You've purchased `o" + item_name + "`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems) + "`` Gems left." + "\n\n`5Received: ``" + join(received_items2, ", ") + "\n"), p2.CreatePacket(peer);
-											break;
-										}
-									fail:
-										packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-										p2.Insert("You don't have enough space in your inventory to buy that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
-										p2.CreatePacket(peer);
-										break;
-									}
-									list = j["i"].get<vector<int>>();
-									getcount = j["h"].get<int>();
-									get_counted = j["h"].get<int>();
-									slot = j["c"].get<int>();
-									token = j["t"].get<int>();
-									random_pack = j["random"].get<int>();
-									int totaltoken = 0, tokencount = 0, mega_token = 0, inventoryfull = 0;
-									modify_inventory(peer, 1486, tokencount);
-									modify_inventory(peer, 6802, mega_token);
-									totaltoken = tokencount + (mega_token * 100);
-									vector<pair<int, int>> receivingitems;
-									if (token == 0 ? price > pInfo(peer)->gems : token > totaltoken) {
-										packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-										p2.Insert("You can't afford `o" + item_name + "``!  You're `$" + (token == 0 ? "" + setGems(price - pInfo(peer)->gems) + "`` Gems short." : "" + setGems(token - totaltoken) + "`` Growtokens short."));
-									}
-									else {
-										if (free >= slot) {
-											string received = "", received2 = "";
-											if (item == "basic_splice") {
-												slot++;
-												receivingitems.push_back(make_pair(11, 10));
-											}
-											if (item == "race_packa") {
-												slot++;
-												receivingitems.push_back(make_pair(11, 10));
-											}
-											for (int i = 0; i < slot; i++) receivingitems.push_back(make_pair((random_pack == 1 ? list[rand() % list.size()] : list[i]), getcount));
-											for (int i = 0; i < slot; i++) {
-												int itemcount = 0;
-												modify_inventory(peer, receivingitems[i].first, itemcount);
-												if (itemcount + getcount > 200) inventoryfull = 1;
-											}
-											if (inventoryfull == 0) {
-												int i = 0;
-												for (i = 0; i < slot; i++) {
-													received += (i != 0 ? ", " : "") + items[receivingitems[i].first].name;
-													received2 += "Got " + to_string(receivingitems[i].second) + " `#" + items[receivingitems[i].first].name + "``." + (i == (slot - 1) ? "" : "\n") + "";
-													modify_inventory(peer, receivingitems[i].first, receivingitems[i].second);
-												}
-											}
-											else {
-												packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-												p2.Insert("You don't have enough space in your inventory that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
-												p2.CreatePacket(peer);
-												break;
-											}
-											{
-												gamepacket_t p;
-												p.Insert("OnConsoleMessage");
-												p.Insert("You've purchased `o" + received + "`` for `$" + (token == 0 ? "" + setGems(price) + "`` Gems." : "" + setGems(token) + "`` Growtokens.") + "\nYou have `$" + (token == 0 ? "" + setGems(pInfo(peer)->gems - price) + "`` Gems left." : "" + setGems(totaltoken - token) + "`` Growtokens left.") + "\n" + received2);
-												p.CreatePacket(peer);
-											}
-											p2.Insert("You've purchased `o" + received + "`` for `$" + (token == 0 ? "" + setGems(price) + "`` Gems." : "" + setGems(token) + "`` Growtokens.") + "\nYou have `$" + (token == 0 ? "" + setGems(pInfo(peer)->gems - price) + "`` Gems left." : "" + setGems(totaltoken - token) + "`` Growtokens left.") + "\n\n`5Received: ``" + (get_counted <= 1 ? "" : "`0" + to_string(get_counted)) + "`` " + received + "\n"), p2.CreatePacket(peer);
-											if (token == 0) {
-												pInfo(peer)->gems -= price;
-												gamepacket_t p;
-												p.Insert("OnSetBux");
-												p.Insert(pInfo(peer)->gems);
-												p.Insert(0);
-												p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-												if (pInfo(peer)->supp >= 2) {
-													p.Insert((float)33796, (float)1, (float)0);
-												}
-												p.CreatePacket(peer);
-											}
-											else {
-												if (tokencount >= token) modify_inventory(peer, 1486, token *= -1);
-												else {
-													modify_inventory(peer, 1486, tokencount *= -1);
-													modify_inventory(peer, 6802, mega_token *= -1);
-													int givemegatoken = (totaltoken - token) / 100;
-													int givetoken = (totaltoken - token) - (givemegatoken * 100);
-													modify_inventory(peer, 1486, givetoken);
-													modify_inventory(peer, 6802, givemegatoken);
-												}
-											}
-											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-										}
-										else {
-											packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-											p2.Insert(slot > 1 ? "You'll need " + to_string(slot) + " slots free to buy that! You have " + to_string(free) + " slots." : "You don't have enough space in your inventory that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
-										}
-									}
-								}
-								else {
-									packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
-									p2.Insert("This item was not found. Server error.");
-									p2.CreatePacket(peer);
-								}
-							}
-							break;
-						}
-						else if (cch == "action|AccountSecurity\nlocation|pausemenu\n") {
-							gamepacket_t p(500);
-							p.Insert("OnDialogRequest");
-							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wAdvanced Account Protection ``|left|3732|\nadd_textbox|`1You are about to enable the Advanced Account Protection.``|left|\nadd_textbox|`1After that, every time you try to log in from a new device and IP you will receive an email with a login confirmation link.``|left|\nadd_textbox|`1This will significantly increase your account security.``|left|\nend_dialog|secureaccount|Cancel|Ok|");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|respawn") != string::npos) SendRespawn(peer, false, 0, (cch.find("action|respawn_spike") != string::npos) ? false : true);
-						else if (cch == "action|refresh_item_data\n") {
-							if (pInfo(peer)->world.empty()) {
-								save_player(pInfo(peer), (f_saving_ ? false : true));
-								enet_peer_send(peer, 0, enet_packet_create(item_data, item_data_size + 60, ENET_PACKET_FLAG_RELIABLE));
-								enet_peer_disconnect_later(peer, 0);
-							}
-							else writelogd(pInfo(peer)->tankIDName + " tried to disconnent while in world");
-							break;
-						}
-						else if (cch == "action|enter_game\n") {
-							pInfo(peer)->enter_game++;
-							if (pInfo(peer)->world == "" && pInfo(peer)->enter_game == 1) {
-								if (pInfo(peer)->tankIDName.empty()) {
-									gamepacket_t p;
-									p.Insert("OnDialogRequest"), p.Insert(r_dialog("")), p.CreatePacket(peer);
-								}
-								else {
-									pInfo(peer)->tmod = pInfo(peer)->mod;
-									pInfo(peer)->name_color = (pInfo(peer)->dev == 1 ? "`6@" : (pInfo(peer)->tmod == 1) ? "`#@" : "`0");
-									//string thetag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
-									//if (pInfo(peer)->drt) pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName + (pInfo(peer)->is_legend ? " of Legend" : "");
-									int on_ = 0, t_ = 0;
-									//if (gotall) pInfo(peer)->superdev = 1, pInfo(peer)->dev = 1, pInfo(peer)->mod = 1, pInfo(peer)->gems = 999999, pInfo(peer)->gtwl = 99999;
-									vector<string> friends_;
-									for (int c_ = 0; c_ < pInfo(peer)->friends.size(); c_++) friends_.push_back(pInfo(peer)->friends[c_].name);
-									if (not pInfo(peer)->invis and not pInfo(peer)->m_h) {
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-											t_ += 1 + rand() % 3 + 1;
-											if (find(friends_.begin(), friends_.end(), pInfo(currentPeer)->tankIDName) != friends_.end()) {
-												if (pInfo(currentPeer)->show_friend_notifications_) {
-													gamepacket_t p;
-													p.Insert("OnConsoleMessage"), p.Insert("`3FRIEND ALERT:`` " + (pInfo(peer)->name_color == "`0" ? "`o" : pInfo(peer)->name_color + "" + pInfo(peer)->tankIDName) + "`` has `2logged on``.");
-													packet_(currentPeer, "action|play_sfx\nfile|audio/friend_logon.wav\ndelayMS|0");
-													p.CreatePacket(currentPeer);
-												}
-												on_++;
-											}
-										}
-									}
-									{
-										gamepacket_t p;
-										p.Insert("OnEmoticonDataChanged");
-										p.Insert(151749376);
-										p.Insert("(wl)|ā|1&(yes)|Ă|1&(no)|ă|1&(love)|Ą|1&(oops)|ą|1&(shy)|Ć|1&(wink)|ć|1&(tongue)|Ĉ|1&(agree)|ĉ|1&(sleep)|Ċ|1&(punch)|ċ|1&(music)|Č|1&(build)|č|1&(megaphone)|Ď|1&(sigh)|ď|1&(mad)|Đ|1&(wow)|đ|1&(dance)|Ē|1&(see-no-evil)|ē|1&(bheart)|Ĕ|1&(heart)|ĕ|1&(grow)|Ė|1&(gems)|ė|1&(kiss)|Ę|1&(gtoken)|ę|1&(lol)|Ě|1&(smile)|Ā|1&(cool)|Ĝ|1&(cry)|ĝ|1&(vend)|Ğ|1&(bunny)|ě|1&(cactus)|ğ|1&(pine)|Ĥ|1&(peace)|ģ|1&(terror)|ġ|1&(troll)|Ġ|1&(evil)|Ģ|1&(fireworks)|Ħ|1&(football)|ĥ|1&(alien)|ħ|1&(party)|Ĩ|1&(pizza)|ĩ|1&(clap)|Ī|1&(song)|ī|1&(ghost)|Ĭ|1&(nuke)|ĭ|1&(halo)|Į|1&(turkey)|į|1&(gift)|İ|1&(cake)|ı|1&(heartarrow)|Ĳ|1&(lucky)|ĳ|1&(shamrock)|Ĵ|1&(grin)|ĵ|1&(ill)|Ķ|1&");
-										p.CreatePacket(peer);
-									}
-									/*
-									{
-										gamepacket_t p;
-										p.Insert("OnEmoticonDataChanged");
-										p.Insert(151749376);
-										string other = "";
-										for (int i = 0; i < pInfo(peer)->gr.size(); i++) other += pInfo(peer)->gr[i];
-										p.Insert(other + "" + (pInfo(peer)->supp == 2 ? "(yes)|Ă|1" : "(yes)|Ă|0") + "&" + (pInfo(peer)->supp != 0 ? "(no)|ă|1" : "(no)|ă|0") + "&" + (pInfo(peer)->supp == 2 ? "(love)|Ą|1" : "(love)|Ą|0") + "&" + (pInfo(peer)->supp != 0 ? "(shy)|Ć|1&(wink)|ć|1" : "(shy)|Ć|0&(wink)|ć|0") + "&" + (pInfo(peer)->level >= 5 ? "(tongue)|Ĉ|1" : "(tongue)|Ĉ|0") + "&" + (pInfo(peer)->friends.size() >= 20 ? "(agree)|ĉ|1" : "(agree)|ĉ|0") + "&" + (pInfo(peer)->supp != 0 ? "(music)|Č|1" : "(music)|Č|0") + "&" + (pInfo(peer)->friends.size() >= 50 ? "(build)|č|1" : "(build)|č|0") + "&" + (pInfo(peer)->supp == 2 ? "(megaphone)|Ď|1" : "(megaphone)|Ď|0") + "&" + (pInfo(peer)->level >= 5 ? "(sigh)|ď|1&(mad)|Đ|1&(wow)|đ|1" : "(sigh)|ď|0&(mad)|Đ|0&(wow)|đ|0") + "&" + (pInfo(peer)->friends.size() >= 40 ? "(dance)|Ē|1" : "(dance)|Ē|0") + "&" + (pInfo(peer)->friends.size() >= 30 ? "(see-no-evil)|ē|1" : "(see-no-evil)|ē|0") + "&" + (pInfo(peer)->supp == 2 ? "(heart)|ĕ|1" : "(heart)|ĕ|0") + "&" + (pInfo(peer)->friends.size() >= 10 ? "(kiss)|Ę|1" : "(kiss)|Ę|0") + "&" + (pInfo(peer)->supp != 0 ? "(lol)|Ě|1" : "(lol)|Ě|1") + "&" + (pInfo(peer)->level >= 5 ? "(smile)|Ā|1" : "(smile)|Ā|0") + "&" + (pInfo(peer)->supp == 2 ? "(cool)|Ĝ|1" : "(cool)|Ĝ|0") + "&(lucky)|ĳ|1&");
-										p.CreatePacket(peer);
-									}*/
-									if (pInfo(peer)->surgery_type == -1) pInfo(peer)->surgery_type = rand() % 30;
-									SendReceive(peer);
-									{
-										if (pInfo(peer)->pinata_day != today_day) {
-											pInfo(peer)->pinata_prize = false;
-											pInfo(peer)->pinata_claimed = false;
-										}
-										gamepacket_t p;
-										p.Insert("OnProgressUISet"), p.Insert(1), p.Insert(0), p.Insert(to_string(pInfo(peer)->pinata_claimed)), p.Insert(1), p.Insert(""), p.Insert(to_string(pInfo(peer)->pinata_prize)), p.CreatePacket(peer);
-									}
-									// ENTER GAME NOTIFICATION
-									gamepacket_t p1;//, p5;
-									p1.Insert("OnConsoleMessage"), p1.Insert("Welcome back, `w" + (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + "````." + (pInfo(peer)->friends.size() == 0 ? "" : (on_ != 0 ? " `w" + to_string(on_) + "`` friend is online." : " No friends are online."))), p1.CreatePacket(peer);
-									//p3.Insert("OnConsoleMessage"), p3.Insert("`3Limited time event``: 3x Gems from breaking blocks, Trees time reduced by 50%, Providers time reduced by 50%!"), p3.CreatePacket(peer);
-									{
-										gamepacket_t p;
-										p.Insert("OnConsoleMessage");
-										if (thedaytoday == 1) p.Insert("`3Today is Trees Day!`` 50% higher chance to get `2extra block`` from harvesting tree.");
-										else if (thedaytoday == 2) p.Insert("`3Today is Breaking Day!`` 15% higher chance to get `2extra seed``.");
-										else if (thedaytoday == 3) p.Insert("`3Today is Geiger Day!`` Higher chance of getting a `2better Geiger prize`` & Irradiated mod will last only `210 minutes``.");
-										else if (thedaytoday == 4) p.Insert("`3Today is Level Day!`` Get extra `2500 gems`` bonus for leveling up.");
-										else if (thedaytoday == 5) p.Insert("`3Today is Gems Day!`` 50% higher chance to get `2extra`` gem drop.");
-										else if (thedaytoday == 6) p.Insert("`3Today is Surgery Day!`` Malpractice takes `215 minutes`` and Recovering takes `230 minutes`` & receive `2different prizes``.");
-										else if (thedaytoday == 0) p.Insert("`3Today is Fishing Day!`` Catch a fish and receive `2extra lb``.");
-										p.CreatePacket(peer);
-									}
-									//p5.Insert("OnConsoleMessage"), p5.Insert("`3It's Approximately `2Cinco `wDe `4Mayo!`` Party with your friends and smash Pinatas for prizes!``"), p5.CreatePacket(peer);
-									if (pInfo(peer)->mod) {
-										if (get_free_slots(pInfo(peer)) >= 1) {
-											if (today_day != pInfo(peer)->mds) {
-												pInfo(peer)->mds = today_day;
-												vector<int> list2{ 408, 274, 276 };
-												int receive = 1, item = list2[rand() % list2.size()], got = 1;
-												modify_inventory(peer, item, receive);
-												gamepacket_t p, p2;
-												p.Insert("OnConsoleMessage"), p.Insert("Your mod appreciation bonus (feel free keep, trade, or use for prizes) for today is:"), p.CreatePacket(peer);
-												p2.Insert("OnConsoleMessage"), p2.Insert("Given `0" + to_string(got) + " " + items[item].name + "``."), p2.CreatePacket(peer);
-											}
-										}
-									}
-									world_menu(peer);
-									news(peer);
-								}
-							}
-							else enet_peer_disconnect_later(peer, 0);
-							break;
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|account_security\nchange|") != string::npos) {
 							string change = cch.substr(57, cch.length() - 57).c_str();
 							replace_str(change, "\n", "");
@@ -4664,7 +6336,8 @@ int main(int argc, char* argv[]) {
 							if (change == "email" or change == "password") p.CreatePacket(peer);
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|change_email\nchange|") != string::npos) {
+						// ADD PIN SECURITY
+						if (cch.find("action|dialog_return\ndialog_name|change_email\nchange|") != string::npos) {
 							string change = cch.substr(53, cch.length() - 53).c_str();
 							replace_str(change, "\n", "");
 							gamepacket_t p;
@@ -4706,6 +6379,189 @@ int main(int argc, char* argv[]) {
 								p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wSwap World Names``|left|2580|\nadd_textbox|`4World swap failed - you don't own both worlds!``|left|\nadd_smalltext|This will swap the name of the world you are standing in with another world `4permanently``.  You must own both worlds, with a World Lock in place.<CR>Your `wChange of Address`` will be consumed if you press `5Swap 'Em``.|left|\nadd_textbox|Enter the other world's name:|left|\nadd_text_input|name_box|||32|\nadd_spacer|small|\nend_dialog|world_swap|Cancel|Swap 'Em!|"), p.CreatePacket(peer);
 							}
 							else create_address_world(peer, world, currentworld);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|change_guild_name\nbuttonClicked|confirm") != string::npos) {
+							string newName = explode("\n", explode("new_guild_name|", cch)[1])[0];
+							bool bad_name = false, already_taken = false;
+							int adaBrp = 0;
+							string check_name = to_lower(newName);
+							for (int i = 0; i < swear_words.size(); i++) {
+								if (check_name.find(swear_words[i]) != string::npos) {
+									bad_name = true;
+									break;
+								}
+							} for (Guild check_guild_name : guilds) {
+								if (to_lower(check_guild_name.guild_name) == check_name) {
+									already_taken = true;
+									break;
+								}
+							}
+							if (already_taken or bad_name or newName.size() < 3 or newName.size() > 15 or special_char(newName)) goto lad;
+							if (modify_inventory(peer, 7190, adaBrp = -1) == 0) {
+								if (pInfo(peer)->guild_id != 0) {
+									uint32_t guild_id = pInfo(peer)->guild_id;
+									uint32_t my_rank = 0;
+									vector<Guild>::iterator p = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
+									if (p != guilds.end()) {
+										Guild* guild_information = &guilds[p - guilds.begin()];
+										for (GuildMember member_search : guild_information->guild_members) {
+											if (member_search.member_name == pInfo(peer)->tankIDName) {
+												my_rank = member_search.role_id;
+												break;
+											}
+										}
+										if (my_rank == 3) {
+											Guild* set_guild = &guilds[p - guilds.begin()];
+											set_guild->guild_name = newName;
+											gamepacket_t p;
+											p.Insert("OnDialogRequest");
+											p.Insert(get_guild_info(peer));
+											p.CreatePacket(peer);
+										}
+									}
+								}
+							}
+							break;
+						lad: {
+							uint32_t my_rank = 0;
+							string guildName = "";
+							if (pInfo(peer)->guild_id != 0) {
+								uint32_t guild_id = pInfo(peer)->guild_id;
+								vector<Guild>::iterator p = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
+								if (p != guilds.end()) {
+									Guild* guild_information = &guilds[p - guilds.begin()];
+									for (GuildMember member_search : guild_information->guild_members) {
+										guildName = guild_information->guild_name;
+										if (member_search.member_name == pInfo(peer)->tankIDName) {
+											my_rank = member_search.role_id;
+											break;
+										}
+									}
+								}
+								if (my_rank == 3) {
+									DialogBuilder guild("`o");
+									guild.add_label_icon(true, 5814, "`wChange Guild Name``")
+										.add_textbox("Current Guild Name:" + guildName)
+										.add_smalltext("`4You can't use that name for your guild name or the name is already taken``")
+										.add_text_input(15, "new_guild_name", "Guild Name:", "")
+										.add_button("confirm", "Confirm")
+										.end_dialog("change_guild_name", "Close", "");
+									enet_peer_send(peer, 0, Variant{ "OnDialogRequest" }.push(guild.to_string()).pack());
+								}
+								else {
+									gamepacket_t p;
+									p.Insert("OnTextOverlay"), p.Insert("Only Guild Leader can Change Guild Name!"), p.CreatePacket(peer);
+									break;
+								}
+							}
+							else {
+								gamepacket_t p;
+								p.Insert("OnTextOverlay"), p.Insert("You must have Guild to use Guild Name Changer!"), p.CreatePacket(peer);
+								break;
+							}
+							break;
+							}
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|change_hid\nhoshi_id|") != string::npos) {
+							if (has_playmod(pInfo(peer), "Recently Name-Changed")) break;
+							string newName = cch.substr(53, cch.length() - 53).c_str();
+							int got = 0;
+							replace_str(newName, "\n", "");
+							string check_name = to_lower(newName);
+							string exist = "database/players/" + newName + "_.json";
+							for (int i = 0; i < swear_words.size(); i++) {
+								if (check_name.find(swear_words[i]) != string::npos) {
+									SendBirth_Dialog(peer, "`4Oops! That is not a great choice for a name... kids play on here, man!``");
+									break;
+								}
+							}
+							if (newName.size() < 3 or newName.size() > 18) {
+								SendBirth_Dialog(peer, "`4Ooops! Your `wHoshiID `4must be between `o3 `4and `o18 `4characters long.``");
+								break;
+							}
+							else if (special_char(newName)) {
+								SendBirth_Dialog(peer, "`4Oops! You can only use letters and numbers in your HoshiID.``");
+								break;
+							}
+							else if (_access_s(exist.c_str(), 0) == 0) {
+								SendBirth_Dialog(peer, "`4Oops! The name `w" + newName + " `4is unavailable. Please choose a different name.``");
+								break;
+							}
+							pInfo(peer)->ChoosingName = newName;
+							SendBirth_Dialog(peer, "Are you absolutely sure you want to use up 1 `2Birth Certificate ``to permanently change your name to \"`9" + newName + "``\"?", true);
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|confirm_hid") != string::npos) {
+							if (pInfo(peer)->ChoosingName.empty() || pInfo(peer)->lastchoosenitem != 1280) break;
+							if (has_playmod(pInfo(peer), "Recently Name-Changed")) break;
+							int remove = -1, adaBrp = 0;
+							modify_inventory(peer, 1280, adaBrp);
+							if (adaBrp == 0) break;
+							if (modify_inventory(peer, 1280, remove) == 0) {
+								try {
+									string oldName = "database/players/" + pInfo(peer)->tankIDName + "_.json";
+									string newName = "database/players/" + pInfo(peer)->ChoosingName + "_.json";
+									rename(oldName.c_str(), newName.c_str());
+									World world_ = get_world(pInfo(peer)->world);
+									for (int i = 0; i < pInfo(peer)->worlds_owned.size(); i++) if (get_world(pInfo(peer)->worlds_owned[i]).owner_name != pInfo(peer)->tankIDName) pInfo(peer)->worlds_owned.erase(pInfo(peer)->worlds_owned.begin() + i);
+									// GUILDS DATA CHANGE IF EXIST
+									if (pInfo(peer)->guild_id != 0) {
+										uint32_t guild_id = pInfo(peer)->guild_id;
+										vector<Guild>::iterator p = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
+										if (p != guilds.end()) {
+											Guild* guild_information = &guilds[p - guilds.begin()];
+											for (int i_ = 0; i_ < guild_information->guild_members.size(); i_++) {
+												GuildMember* edit_member = &guild_information->guild_members[i_];
+												if (edit_member->member_name == pInfo(peer)->tankIDName) {
+													edit_member->member_name = pInfo(peer)->ChoosingName;
+												}
+											}
+										}
+									}
+									// PLAYERS DATA CHANGE
+									pInfo(peer)->tankIDName = pInfo(peer)->ChoosingName;
+									pInfo(peer)->name_color = ((pInfo(peer)->tmod == 1 and not pInfo(peer)->d_name.empty()) ? (pInfo(peer)->superdev ? "`c@" : pInfo(peer)->dev ? "`6@" : pInfo(peer)->supermod ? "`8@" : pInfo(peer)->mod ? "`#@" : "`0") : (pInfo(peer)->tankIDName == world_.owner_name) ? "`2" : (guild_access(peer, world_.guild_id) or find(world_.admins.begin(), world_.admins.end(), pInfo(peer)->tankIDName) != world_.admins.end()) ? "`^" : "`0");
+									pInfo(peer)->modName = (pInfo(peer)->superdev ? "`c@" : pInfo(peer)->dev ? "`6@" : pInfo(peer)->supermod ? "`8@" : pInfo(peer)->mod ? "`#@" : "`0") + pInfo(peer)->ChoosingName;
+									pInfo(peer)->d_name = "";
+									if (not pInfo(peer)->Alt_Accounts.empty()) {
+										for (int i = 0; i < pInfo(peer)->Alt_Accounts.size(); i++) {
+											if (pInfo(peer)->tankIDName == pInfo(peer)->Alt_Accounts[i]) {
+												pInfo(peer)->Alt_Accounts.erase(pInfo(peer)->Alt_Accounts.begin() + i);
+												break;
+											}
+										}
+									}
+									PlayMods new_playmod{};
+									new_playmod.id = 124;
+									new_playmod.time = time(nullptr) + 2592000;
+									pInfo(peer)->playmods.push_back(new_playmod);
+									// WORLDS OWNED DATA CHANGE
+									for (int x = 0; x < pInfo(peer)->worlds_owned.size(); x++) {
+										string name_ = pInfo(peer)->worlds_owned[x];
+										vector<World>::iterator px = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+										if (px != worlds.end()) {
+											World* world_ = &worlds[px - worlds.begin()];
+											update_world(peer, world_, pInfo(peer)->tankIDName, pInfo(peer)->worlds_owned[x]);
+										}
+									}
+									gamepacket_t p2(0, pInfo(peer)->netID);
+									p2.Insert("OnNameChanged");
+									p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->ChoosingName) + (pInfo(peer)->is_legend ? " of Legend" : "") + "``");
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+											p2.CreatePacket(currentPeer);
+										}
+									}
+									pInfo(peer)->ChoosingName = "";
+									gamepacket_t p;
+									p.Insert("SetHasGrowID"), p.Insert(1), p.Insert(pInfo(peer)->tankIDName), p.Insert(pInfo(peer)->tankIDPass), p.CreatePacket(peer);
+								}
+								catch (exception& e) {
+									hoshi_warn(e.what());
+								}
+							}
 							break;
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|surgery\nbuttonClicked|tool") != string::npos) {
@@ -4805,32 +6661,158 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch.find("action|dialog_return\ndialog_name|levelup\nbuttonClicked|claimreward") != string::npos) {
-							int count = atoi(cch.substr(66, cch.length() - 66).c_str());
-							if (count < 1 || count >125) break;
-							if (std::find(pInfo(peer)->lvl_p.begin(), pInfo(peer)->lvl_p.end(), count) == pInfo(peer)->lvl_p.end()) {
-								if (pInfo(peer)->level >= count) {
-									pInfo(peer)->lvl_p.push_back(count);
-									packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
-									gamepacket_t p;
-									p.Insert("OnSetBux");
-									p.Insert(pInfo(peer)->gems += count * 100);
-									p.Insert(0);
-									p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
-									if (pInfo(peer)->supp >= 2) {
-										p.Insert((float)33796, (float)1, (float)0);
+						else if (cch.find("action|dialog_return\ndialog_name|lock_compactor\ncount|") != string::npos) {
+							int count = atoi(cch.substr(54, cch.length() - 54).c_str()), item = pInfo(peer)->lastchoosenitem, got = 0;
+							modify_inventory(peer, item, got);
+							if (got < count) break;
+							vector<int> list{ 1796, 242, 7188 };
+							// todo here
+							if (find(list.begin(), list.end(), item) != list.end() == false) break;
+							else {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									string received = "";
+									vector<pair<int, int>> receivingitems;
+									vector<int> rare_prize = { 5140 };
+									for (int i = 0; i < count; i++) {
+										if (rand() % 100 + 1 < 50) {
+											bool dublicate = false;
+											int given_item = rare_prize[rand() % rare_prize.size()];
+											for (int i = 0; i < receivingitems.size(); i++) {
+												if (receivingitems[i].first == given_item) {
+													dublicate = true;
+													receivingitems[i].second += 1;
+												}
+											}
+											if (dublicate == false) receivingitems.push_back(make_pair(given_item, 1));
+										}
+										else {
+											bool dublicate = false;
+											int given_item = 112, given_count = (rand() % 25000) / 2 + 1;
+											if (rand() % 3 < 1) given_item = 856, given_count = 1;
+											for (int i = 0; i < receivingitems.size(); i++) {
+												if (receivingitems[i].first == given_item) {
+													dublicate = true;
+													receivingitems[i].second += given_count;
+												}
+											}
+											if (dublicate == false) receivingitems.push_back(make_pair(given_item, given_count));
+										}
 									}
-									p.CreatePacket(peer);
-									{
-										gamepacket_t p;
-										p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("Congratulations! You have received your Level Up Reward!"), p.Insert(0), p.Insert(0), p.CreatePacket(peer);
+									int remove = count * -1;
+									modify_inventory(peer, item, remove);
+									for (int i = 0; i < receivingitems.size(); i++) {
+										if (receivingitems.size() == 1) received += to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``");
+										else {
+											if (receivingitems.size() - 1 == i)received += "and " + to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``");
+											else if (i != receivingitems.size()) received += to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``") + ", ";
+										}
+										int given_count = receivingitems[i].second;
+										if (receivingitems[i].first != 112) {
+											if (modify_inventory(peer, receivingitems[i].first, given_count) == 0) {
+											}
+											else {
+												WorldDrop drop_block_{};
+												drop_block_.id = receivingitems[i].first, drop_block_.count = given_count, drop_block_.uid = uint16_t(world_->drop.size()) + 1, drop_block_.x = (pInfo(peer)->lastwrenchx * 32) + rand() % 17, drop_block_.y = (pInfo(peer)->lastwrenchy * 32) + rand() % 17;
+												dropas_(world_, drop_block_);
+											}
+										}
+										else {
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems += given_count), p.Insert(0), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) {
+												p.Insert((float)33796, (float)1, (float)0);
+											}
+											p.CreatePacket(peer);
+										}
 									}
-									PlayerMoving data_{};
-									data_.packetType = 17, data_.netID = 198, data_.YSpeed = 198, data_.x = pInfo(peer)->x + 16, data_.y = pInfo(peer)->y + 16;
-									BYTE* raw = packPlayerMoving(&data_);
-									send_raw(peer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-									delete[] raw;
-									level_show(peer);
+									gamepacket_t p, p2;
+									p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("`7[``From crushing " + to_string(count) + " " + items[item].name + ", " + pInfo(peer)->tankIDName + " extracted " + received + ".`7]``"), p.Insert(0);
+									p2.Insert("OnConsoleMessage"), p2.Insert("`7[``From crushing " + to_string(count) + " " + items[item].name + ", " + pInfo(peer)->tankIDName + " extracted " + received + ".`7]``");
+									for (ENetPeer* currentPeer_event = server->peers; currentPeer_event < &server->peers[server->peerCount]; ++currentPeer_event) {
+										if (currentPeer_event->state != ENET_PEER_STATE_CONNECTED or currentPeer_event->data == NULL or pInfo(currentPeer_event)->world != name_) continue;
+										p.CreatePacket(currentPeer_event), p2.CreatePacket(currentPeer_event);
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|dialog_return\ndialog_name|iotm_compactor\ncount|") != string::npos) {
+							int count = atoi(cch.substr(54, cch.length() - 54).c_str()), item = pInfo(peer)->lastchoosenitem, got = 0;
+							modify_inventory(peer, item, got);
+							if (got < count) break;
+							vector<int> list{ 4534, 4628, 5020, 5206, 5322, 5712, 6294, 6338, 6758, 6892, 7196, 7384, 7568, 7570, 7572, 7574, 7676, 7678, 7680, 7682, 7836, 7838, 7840, 7842, 8006, 8010, 8288, 8290, 8292, 8294, 8304, 8432, 8434, 8436, 8438, 8576, 8578, 8580, 8816, 8818, 8820, 8822, 8898, 8900, 8902, 8904, 9008, 9010, 9012, 9014, 9116, 9118, 9120, 9122, 9136, 9138, 9236, 9348, 9408, 9462, 9464, 9606, 9648, 9760, 10044, 10128, 10166, 10246, 10426, 10618, 10666, 10718, 10810, 11006, 11116, 11232, 11306, 11440, 11506, 11704, 11750, 11882, 11906, 12246, 12344, 12432, 12642, 12834, 12872, 13022, 4988, 5480, 4590, 4746, 5088, 7192, 8582, 5138, 5154, 8012, 8008, 10496, 10914, 11308, 11442, 11508, 11552, 11662, 11706, 11752, 11884, 11908, 12248, 12346, 12434, 12644, 12836, 12874, 12958, 13024 };
+							// todo here
+							if (find(list.begin(), list.end(), item) != list.end() == false) break;
+							else {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									string received = "";
+									vector<pair<int, int>> receivingitems;
+									vector<int> rare_prize = { 5140 };
+									for (int i = 0; i < count; i++) {
+										if (rand() % 2 < 1) {
+											bool dublicate = false;
+											int given_item = rare_prize[rand() % rare_prize.size()];
+											for (int i = 0; i < receivingitems.size(); i++) {
+												if (receivingitems[i].first == given_item) {
+													dublicate = true;
+													receivingitems[i].second += 1;
+												}
+											}
+											if (dublicate == false) receivingitems.push_back(make_pair(given_item, 1));
+										}
+										else {
+											bool dublicate = false;
+											int given_item = 112, given_count = (rand() % 25000) / 2 + 1;
+											if (rand() % 3 < 1) given_item = 856, given_count = 1;
+											for (int i = 0; i < receivingitems.size(); i++) {
+												if (receivingitems[i].first == given_item) {
+													dublicate = true;
+													receivingitems[i].second += given_count;
+												}
+											}
+											if (dublicate == false) receivingitems.push_back(make_pair(given_item, given_count));
+										}
+									}
+									int remove = count * -1;
+									modify_inventory(peer, item, remove);
+									for (int i = 0; i < receivingitems.size(); i++) {
+										if (receivingitems.size() == 1) received += to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``");
+										else {
+											if (receivingitems.size() - 1 == i)received += "and " + to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``");
+											else if (i != receivingitems.size()) received += to_string(receivingitems[i].second) + " " + (items[item].r_1 == receivingitems[i].first || items[item].r_2 == receivingitems[i].first || items[item].r_2 - 1 == receivingitems[i].first || items[item].r_1 - 1 == receivingitems[i].first ? "`2" + items[receivingitems[i].first].name + "``" : (receivingitems[i].first == 112) ? items[receivingitems[i].first].name : "`1" + items[receivingitems[i].first].name + "``") + ", ";
+										}
+										int given_count = receivingitems[i].second;
+										if (receivingitems[i].first != 112) {
+											if (modify_inventory(peer, receivingitems[i].first, given_count) == 0) {
+											}
+											else {
+												WorldDrop drop_block_{};
+												drop_block_.id = receivingitems[i].first, drop_block_.count = given_count, drop_block_.uid = uint16_t(world_->drop.size()) + 1, drop_block_.x = (pInfo(peer)->lastwrenchx * 32) + rand() % 17, drop_block_.y = (pInfo(peer)->lastwrenchy * 32) + rand() % 17;
+												dropas_(world_, drop_block_);
+											}
+										}
+										else {
+											gamepacket_t p;
+											p.Insert("OnSetBux"), p.Insert(pInfo(peer)->gems += given_count), p.Insert(0), p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) {
+												p.Insert((float)33796, (float)1, (float)0);
+											}
+											p.CreatePacket(peer);
+										}
+									}
+									gamepacket_t p, p2;
+									p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("`7[``From crushing " + to_string(count) + " " + items[item].name + ", " + pInfo(peer)->tankIDName + " extracted " + received + ".`7]``"), p.Insert(0);
+									p2.Insert("OnConsoleMessage"), p2.Insert("`7[``From crushing " + to_string(count) + " " + items[item].name + ", " + pInfo(peer)->tankIDName + " extracted " + received + ".`7]``");
+									for (ENetPeer* currentPeer_event = server->peers; currentPeer_event < &server->peers[server->peerCount]; ++currentPeer_event) {
+										if (currentPeer_event->state != ENET_PEER_STATE_CONNECTED or currentPeer_event->data == NULL or pInfo(currentPeer_event)->world != name_) continue;
+										p.CreatePacket(currentPeer_event), p2.CreatePacket(currentPeer_event);
+									}
 								}
 							}
 							break;
@@ -4896,43 +6878,6 @@ int main(int argc, char* argv[]) {
 							send_growscan_worldblocks(peer, search, type);
 							break;
 						}
-						if (cch.find("action|dialog_return\ndialog_name|billboard_edit\nbillboard_toggle|") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							int billboard_active = atoi(explode("\n", t_[3])[0].c_str());
-							int billboard_price = atoi(explode("\n", t_[4])[0].c_str());
-							int peritem = atoi(explode("\n", t_[5])[0].c_str());
-							int perlock = atoi(explode("\n", t_[6])[0].c_str());
-							bool update_billboard = true;
-							if (peritem == perlock or peritem == 0 and perlock == 0 or peritem == 1 and perlock == 1) {
-								update_billboard = false;
-								gamepacket_t p, p2;
-								p.Insert("OnConsoleMessage"), p.Insert("You need to pick one pricing method - 'locks per item' or 'items per lock'"), p.CreatePacket(peer);
-								p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("You need to pick one pricing method - 'locks per item' or 'items per lock'"), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
-							}
-							else {
-								if (peritem == 1) pInfo(peer)->b_w = 1;
-								if (perlock == 1) pInfo(peer)->b_w = 0;
-							}
-							if (billboard_active == 1)pInfo(peer)->b_a = 1;
-							else pInfo(peer)->b_a = 0;
-							if (billboard_price < 0 or billboard_price > 99999) {
-								update_billboard = false;
-								gamepacket_t p, p2;
-								p.Insert("OnConsoleMessage"), p.Insert("Price can't be negative. That's beyond science."), p.CreatePacket(peer);
-								p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("Price can't be negative. That's beyond science."), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
-							}
-							else pInfo(peer)->b_p = billboard_price;
-							if (update_billboard && pInfo(peer)->b_p != 0 && pInfo(peer)->b_i != 0) {
-								gamepacket_t p(0, pInfo(peer)->netID);
-								p.Insert("OnBillboardChange"), p.Insert(pInfo(peer)->netID), p.Insert(pInfo(peer)->b_i), p.Insert(pInfo(peer)->b_a), p.Insert(pInfo(peer)->b_p), p.Insert(pInfo(peer)->b_w);
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
-									p.CreatePacket(currentPeer);
-								}
-							}
-							break;
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|dialog_scarf_of_seasons\nbuttonClicked") != string::npos) {
 							if (pInfo(peer)->necklace == 11818) pInfo(peer)->i_11818_1 = 0, pInfo(peer)->i_11818_2 = 0, update_clothes(peer);
 							break;
@@ -4945,11 +6890,11 @@ int main(int argc, char* argv[]) {
 								if (pInfo(peer)->drtitle) {
 									pInfo(peer)->drt = atoi(explode("\n", t_.at(total++)).at(0).c_str());
 									string thetag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
-									pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr. " : "") + pInfo(peer)->tankIDName;
+									pInfo(peer)->d_name = (pInfo(peer)->drt ? "`4" + thetag : pInfo(peer)->name_color) + (pInfo(peer)->drt ? "Dr." : "") + pInfo(peer)->tankIDName;
 									if (!pInfo(peer)->drt) pInfo(peer)->d_name = "";
 									{
 										gamepacket_t p2(0, pInfo(peer)->netID);
-										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName));
+										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)));
 										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
 											p2.CreatePacket(currentPeer);
@@ -4960,10 +6905,9 @@ int main(int argc, char* argv[]) {
 								if (pInfo(peer)->legend) {
 									pInfo(peer)->is_legend = atoi(explode("\n", t_.at(total++)).at(0).c_str());
 									string modtag = (pInfo(peer)->mod || pInfo(peer)->dev ? "@" : "");
-									if (!pInfo(peer)->is_legend);
 									{
 										gamepacket_t p2(0, pInfo(peer)->netID);
-										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->name_color + pInfo(peer)->tankIDName) + (pInfo(peer)->is_legend ? " of Legend``" : ""));
+										p2.Insert("OnNameChanged"), p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + (pInfo(peer)->is_legend ? " of Legend``" : ""));
 										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
 											p2.CreatePacket(currentPeer);
@@ -5081,7 +7025,7 @@ int main(int argc, char* argv[]) {
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|b_claimreward") != string::npos) {
 							int reward = atoi(cch.substr(72, cch.length() - 72).c_str()), lvl = 0, count = 1;
-							vector<int> list{ 6896, 6948, 1068, 1966, 1836, 5080, 10754, 1874, 6946 };
+							vector<int> list{ 6896, 5212, 6948, 1068, 1966, 1836, 5080, 10754, 1874, 6946 };
 							if (reward <= 0 || reward > list.size()) break;
 							if (list[reward - 1] == 1068) count = 10;
 							if (find(pInfo(peer)->bb_p.begin(), pInfo(peer)->bb_p.end(), lvl = reward * 5) == pInfo(peer)->bb_p.end()) {
@@ -5351,156 +7295,6 @@ int main(int argc, char* argv[]) {
 							}
 							break;
 						}
-						else if (cch == "action|claimdailyreward\n") {
-							if (pInfo(peer)->pinata_prize == false) {
-								int c_ = 1;
-								gamepacket_t p_c;
-								p_c.Insert("OnConsoleMessage");
-								if (modify_inventory(peer, 9616, c_) == 0) {
-									pInfo(peer)->pinata_day = today_day;
-									pInfo(peer)->pinata_prize = true;
-									pInfo(peer)->pinata_claimed = false;
-									gamepacket_t p, p2;
-									p.Insert("OnProgressUIUpdateValue"), p.Insert(pInfo(peer)->pinata_claimed ? 1 : 0), p.Insert(pInfo(peer)->pinata_prize ? 1 : 0), p.CreatePacket(peer);
-									p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("You got a Block De Mayo Block!"), p2.CreatePacket(peer);
-									p_c.Insert("You got a Block De Mayo Block!");
-								}
-								else  p_c.Insert("You got a Block De Mayo Block!"),
-									p_c.CreatePacket(peer);
-							}
-							break;
-						}
-						else if (cch == "action|showcincovolcaniccape\n" || cch == "action|showcincovolcanicwings\n") {
-							gamepacket_t p(500);
-							p.Insert("OnDialogRequest");
-							if (cch == "action|showcincovolcanicwings\n") p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wVolcanic Ventures : Volcanic Wings``|left|11870|\nadd_spacer|small|\nadd_textbox|Every `224 hours``, a limited amount of `2Volcanic Wings`` will be released into the game!|left|\nadd_spacer|small|\nadd_textbox|For your chance to find one of these `#Rare`` items, smash a `2Lava Pinata``. |left|\nadd_spacer|small|\nadd_textbox|There will only be 48 released every 24 hours so, be quick!|left|\nadd_spacer|small|\nadd_textbox|Did you know there are 48 active Volcanoes in Mexico?|left|\nend_dialog|volcanic_quest||OK|");
-							else p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wVolcanic Ventures : Volcanic Cape``|left|10806|\nadd_spacer|small|\nadd_textbox|Every `224 hours``, a limited amount of `2Volcanic Cape`` will be released into the game!|left|\nadd_spacer|small|\nadd_textbox|For your chance to find one of these `#Rare`` items, smash a `2Lava Pinata``. |left|\nadd_spacer|small|\nadd_textbox|There will only be 48 released every 24 hours so, be quick!|left|\nadd_spacer|small|\nadd_textbox|Did you know there are 48 active Volcanoes in Mexico?|left|\nend_dialog|volcanic_quest||OK|");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch == "action|dailyrewardmenu\n") {
-							gamepacket_t p(500);
-							p.Insert("OnDailyRewardRequest");
-							if (pInfo(peer)->pinata_prize) {
-								struct tm newtime;
-								time_t now = time(0);
-								localtime_s(&newtime, &now);
-								p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wBlock De Mayo|left|9616|\nset_default_color|`o\nadd_image_button||interface/large/gui_shop_buybanner.rttex|bannerlayout|flag_frames:4,1,3,0|flag_surfsize:512,200|\nadd_smalltext|`7Get involved and get rewards!`` Smash an Ultra Pinata once a day during `5Cinco de Mayo Week`` and get a daily reward!|left|\nadd_spacer|small|\nadd_button|claimbutton|Come Back Later|noflags|0|0|\nadd_countdown|" + to_string(24 - newtime.tm_hour) + "H" + (60 - newtime.tm_min != 0 ? " " + to_string(60 - newtime.tm_min) + "M" : "") + "|center|disable|\nadd_quick_exit|");
-							}
-							else {
-								if (pInfo(peer)->pinata_claimed) p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wBlock De Mayo|left|9616|\nset_default_color|`o\nadd_image_button||interface/large/gui_shop_buybanner.rttex|bannerlayout|flag_frames:4,1,3,0|flag_surfsize:512,200|\nadd_smalltext|`7Get involved and get rewards!`` Smash an Ultra Pinata once a day during `5Cinco de Mayo Week`` and get a daily reward!|left|\nadd_spacer|small|\nadd_button|claimbutton|CLAIM|noflags|0|0|\nadd_countdown||center|enable|\nadd_quick_exit|");
-								else p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wBlock De Mayo|left|9616|\nset_default_color|`o\nadd_image_button||interface/large/gui_shop_buybanner.rttex|bannerlayout|flag_frames:4,1,3,0|flag_surfsize:512,200|\nadd_smalltext|`7Get involved and get rewards!`` Smash an Ultra Pinata once a day during `5Cinco de Mayo Week`` and get a daily reward!|left|\nadd_spacer|small|\nadd_button|claimbutton|Come Back Later|noflags|0|0|\nadd_countdown||center|disable|\nadd_quick_exit|");
-							}
-							p.CreatePacket(peer);
-							break;
-						}
-						/*else if (cch == "action|dialog_return\ndialog_name|grow4goodtasks_dialog\nbuttonClicked|tab_tasks\n\n") {
-						grow4good(peer, true, "tab_tasks", 0);
-						break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|grow4goodtasks_dialog\nbuttonClicked|tab_rewards\n\n") {
-						grow4good(peer, true, "tab_rewards", 0);
-						break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|grow4goodtasks_dialog\nbuttonClicked|item_info_11756") != string::npos) {
-						gamepacket_t p(500);
-						p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wReward Details`|left|11756|\nadd_spacer|small|\nadd_spacer|small|\nadd_textbox|A Hamper filled with cool stuff given to players as thank you for their generosity throughout the Grow4Good Event!|left|\nadd_spacer|small|\nadd_quick_exit|\nadd_button|tab_rewards|Back|noflags|0|0|\nend_dialog|grow4goodtasks_dialog|Close||"), p.CreatePacket(peer);
-						break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|grow4goodtasks_dialog\nbuttonClicked|item_info_11758") != string::npos) {
-						gamepacket_t p(500);
-						p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label_with_icon|big|`wReward Details`|left|11758|\nadd_spacer|small|\nadd_spacer|small|\nadd_textbox|Opening this will give you an awesome prize, which could include one of the following `5EPIC LIMITED QUANTITY ITEMS``:|left|\nadd_label_with_icon|small| Phoenix Wings|left|1674|\nadd_label_with_icon|small| Sun Blade|left|8944|\nadd_label_with_icon|small| Nightmare Devil Wings|left|1970|\nadd_label_with_icon|small| Sonic Buster Katana|left|11118|\nadd_label_with_icon|small| Golden Angel Wings|left|1460|\nadd_label_with_icon|small| Horns of Growganoth|left|9036|\nadd_label_with_icon|small| Neptune's Trident|left|9758|\nadd_label_with_icon|small| Axolotl Scarf|left|10026|\nadd_label_with_icon|small| Thingamabob|left|8284|\nadd_label_with_icon|small| Swordfish Sword|left|10388|\nadd_label_with_icon|small| Possessing Scarf|left|11318|\nadd_label_with_icon|small| American Sports Ball Jersey|left|10252|\nadd_label_with_icon|small| Draconic Wings|left|5754|\nadd_label_with_icon|small| Egg Champion Cape|left|9446|\nadd_label_with_icon|small| Golden Heart Crystal|left|1458|\nadd_label_with_icon|small| Hotpants|left|4664|\nadd_label_with_icon|small| One Winged Angel|left|10748|\nadd_label_with_icon|small| Fish Tank Head|left|11768|\nadd_label_with_icon|small| Growing Guardian Armor|left|11760|\nadd_label_with_icon|small| Cashback Coupon 10,000 Gems|left|5138|\nadd_textbox|`4A MAXIMUM of only 5 of each of these `5EPIC items`` will drop over the course of the event``.|left|\nadd_spacer|small|\nadd_quick_exit|\nadd_button|tab_rewards|Back|noflags|0|0|\nend_dialog|grow4goodtasks_dialog|Close||"), p.CreatePacket(peer);
-						break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|grow4goodtasks_dialog\nbuttonClicked|claimrewardsg4g\n\n") {
-						vector<int> list;
-						bool fullinv = false;
-						if (pInfo(peer)->grow4good_points >= 40 && pInfo(peer)->grow4good_claimed_prize == 0) list.push_back(11756);
-						if (pInfo(peer)->grow4good_points >= 80 && pInfo(peer)->grow4good_claimed_prize == 0) list.push_back(11756);
-						if (pInfo(peer)->grow4good_points >= 80 && pInfo(peer)->grow4good_claimed_prize == 1) list.push_back(11756);
-						if (pInfo(peer)->grow4good_points >= 240) list.push_back(11758);
-						for (int i = 0; i < list.size(); i++) {
-							int give = 1;
-							if (modify_inventory(peer, list[i], give) == 0) {
-								if (list[i] == 11756) pInfo(peer)->grow4good_claimed_prize++;
-								else {
-									pInfo(peer)->grow4good_points -= 240;
-									pInfo(peer)->grow4good_claimed_prize = 0;
-								}
-								gamepacket_t p;
-								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("You received `21 "+ items[list[i]].ori_name +"."), p.CreatePacket(peer);
-								{
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage"), p.Insert("You received `21 " + items[list[i]].ori_name + "."), p.CreatePacket(peer);
-								}
-							}
-							else {
-								gamepacket_t p;
-								p.Insert("OnConsoleMessage"), p.Insert("No inventory space."), p.CreatePacket(peer);
-							}
-						}
-						if (pInfo(peer)->grow4good_claimed_prize == 3) pInfo(peer)->grow4good_claimed_prize = 0;
-						break;
-						}
-						else if (cch == "action|grow4goodcomunity\n") {
-						grow4good(peer, true, "tab_tasks", 0);
-						break;
-						}
-						else if (cch == "action|grow4goodDonateRarity\n") {
-						gamepacket_t p(500);
-						p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label|big|`wDonate to Charity!`|left|\nadd_image_button||interface/large/wtr_lvl2_wjcxuy.rttex|bannerlayout|flag_frames:1,1,0,0|flag_surfsize:985,256|\nadd_spacer|small|\nadd_item_picker|donaterarity|`wSelect an Item to Donate``|Donate|\nadd_label|small|This will donate any items with a rarity of 100 or lower to go towards the work of Operation Smile. Ubisoft will convert this in-game donation to a monetary amount through the global milestones.|left\nadd_spacer|small|\nadd_button|cancel|Cancel|noflags|0|0|\nend_dialog|grow4goodtasks_dialog|||"), p.CreatePacket(peer);
-						break;
-						}
-						else if (cch == "action|grow4goodDonateWL\n") {
-						int got = 0;
-						modify_inventory(peer, 242, got);
-						if (got <= 0) {
-							gamepacket_t p;
-							p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("`4You dont have any World Lock in your inventory.``"), p.CreatePacket(peer);
-						}
-						else {
-							pInfo(peer)->lockeitem = 242;
-							gamepacket_t p(500);
-							p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label|big|Donate to Charity|left|\nadd_image_button||interface/large/wtr_lvl2_wjcxuy.rttex|bannerlayout|flag_frames:1,1,0,0|flag_surfsize:985,256|\nadd_spacer|small|\nadd_textbox|How many to donate? (you have " + to_string(got) + ")|left|\nadd_text_input|count||0|5|\nadd_spacer|small|\nadd_smalltext|Total World Lock Donated Today: " + to_string(pInfo(peer)->grow4good_total_wl) + "|left|\nadd_spacer|small|\nadd_label|small|This will donate World Locks to go towards the work of Operation Smile. Ubisoft will convert this in-game donation to a monetary amount through the global milestones.|left\nadd_spacer|small|\nend_dialog|donate_item_rarity|Cancel|OK|"), p.CreatePacket(peer);
-						}
-						break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|grow4goodtasks_dialog\ndonaterarity|") != string::npos) {
-						int item = atoi(cch.substr(68, cch.length() - 68).c_str()), got = 0;
-							if (item <= 0 || item > items.size()) break;
-							modify_inventory(peer, item, got);
-							if (got == 0) break;
-							pInfo(peer)->lockeitem = item;
-							gamepacket_t p;
-							if (items[item].untradeable || items[item].rarity <= 0 || items[item].rarity >= 367) p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("I'm sorry, we can't accept items without rarity!");
-							else p.Insert("OnDialogRequest"), p.Insert("add_label_with_icon|big|Donate `w" + items[item].ori_name + "|left|" + to_string(item) + "|\nadd_textbox|How many to donate? (you have " + to_string(got) + ")|left|\nadd_text_input|count||0|5|\nadd_spacer|small|\nadd_smalltext|Item Rarity : " + to_string(items[item].rarity) + "|left|\nadd_smalltext|Total Rarity Donated Today: " + to_string(pInfo(peer)->grow4good_rarity) + "|left|\nadd_spacer|small|\nend_dialog|donate_item_rarity|Cancel|OK|");
-							p.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|donate_item_rarity\ncount|") != string::npos) {
-						int count = atoi(cch.substr(58, cch.length() - 58).c_str()), got = 0, item = pInfo(peer)->lockeitem;
-						if (item <= 0 || item > items.size()) break;
-						modify_inventory(peer, item, got);
-						if (got == 0 || count > got || count <= 0) break;
-						pInfo(peer)->donate_count = count;
-						gamepacket_t p;
-						p.Insert("OnDialogRequest"), p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Donate`` " + to_string(count) + " `w" + items[item].ori_name + "``|left|" + to_string(item) + "|\nadd_textbox|Are you sure you want to do this? There is no way to get the item back if you select yes.|left|\nend_dialog|donate_item_rarity_confirm|NO!|Yes, I am sure|"), p.CreatePacket(peer);
-						break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|donate_item_rarity_confirm\n") != string::npos) {
-						int item = pInfo(peer)->lockeitem, needed = pInfo(peer)->donate_count, got = 0, remove = 0;
-						modify_inventory(peer, item, got);
-						if (got < needed || needed <= 0) break;
-						remove = needed * -1;
-						modify_inventory(peer, item, remove);
-						if (item == 242)grow4good(peer, false, "wl", needed);
-						else grow4good(peer, false, "rarity", needed* items[item].rarity);
-						break;
-						}*/
-						else if (cch == "action|dialog_return\ndialog_name|worlds_list\nbuttonClicked|surgery_reward\n\n") {
-							surgery_reward_show(peer);
-							break;
-						}
 						else if (cch.find("action|dialog_return\ndialog_name|password_reply\npassword|") != string::npos) {
 							string password = cch.substr(57, cch.length() - 57).c_str();
 							string name_ = pInfo(peer)->world;
@@ -5544,24 +7338,6 @@ int main(int argc, char* argv[]) {
 									}
 									p.CreatePacket(peer);
 								}
-							}
-							break;
-						}
-						else if (cch == "action|dialog_return\ndialog_name|2646\nbuttonClicked|off\n\n") {
-							string name_ = pInfo(peer)->world;
-							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-							if (p != worlds.end()) {
-								World* world_ = &worlds[p - worlds.begin()];
-								WorldBlock* block_ = &world_->blocks[pInfo(peer)->lastwrenchx + (pInfo(peer)->lastwrenchy * 100)];
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(peer)->world != pInfo(currentPeer)->world or block_->spotlight != pInfo(currentPeer)->tankIDName) continue;
-									pInfo(currentPeer)->spotlight = false, update_clothes(currentPeer);
-									gamepacket_t p;
-									p.Insert("OnConsoleMessage"), p.Insert("Back to anonymity. (`$In the Spotlight`` mod removed)"), p.CreatePacket(currentPeer);
-								}
-								gamepacket_t p;
-								p.Insert("OnTalkBubble"), p.Insert(pInfo(peer)->netID), p.Insert("Lights out!"), p.CreatePacket(peer);
-								block_->spotlight = "";
 							}
 							break;
 						}
@@ -5739,6 +7515,18 @@ int main(int argc, char* argv[]) {
 							if (allwl >= price) {
 								int c_ = 1;
 								if (modify_inventory(peer, item, c_) == 0) {
+									if (item == 1486 && pInfo(peer)->C_QuestActive && pInfo(peer)->C_QuestKind == 11 && pInfo(peer)->C_QuestProgress < pInfo(peer)->C_ProgressNeeded) {
+										pInfo(peer)->C_QuestProgress++;
+										if (pInfo(peer)->C_QuestProgress >= pInfo(peer)->C_ProgressNeeded) {
+											pInfo(peer)->C_QuestProgress = pInfo(peer)->C_ProgressNeeded;
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9Ring Quest task complete! Go tell the Ringmaster!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+										}
+									}
 									if (item == 1486 && pInfo(peer)->quest_active && pInfo(peer)->quest_step == 6 && pInfo(peer)->quest_progress < 28) {
 										pInfo(peer)->quest_progress++;
 										if (pInfo(peer)->quest_progress >= 28) {
@@ -5784,44 +7572,874 @@ int main(int argc, char* argv[]) {
 						}
 						else if (cch.find("action|dialog_return\ndialog_name|worldreport\nreport_reason|") != string::npos) {
 							if (pInfo(peer)->tankIDName == "") break;
-							string report = cch.substr(59, cch.length() - 59).c_str();
-							replace_str(report, "\n", "");
-							add_modlogs(peer, pInfo(peer)->name_color + pInfo(peer)->tankIDName, "`4reports:`` " + report, "");
-							gamepacket_t p2;
-							p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("Thank you for your report. Now leave this world so you don't get punished along with the scammers!"), p2.CreatePacket(peer);
-							break;
-						}
-						else if (cch.find("action|dialog_return\ndialog_name|billboard_edit\nbillboard_item|") != string::npos) {
-							vector<string> t_ = explode("|", cch);
-							if (t_.size() < 4) break;
-							int billboard_item = atoi(explode("\n", t_[3])[0].c_str());
-							if (billboard_item > 0 && billboard_item < items.size()) {
-								int got = 0;
-								modify_inventory(peer, billboard_item, got);
-								if (got == 0) break;
-								if (items[billboard_item].untradeable == 1 or billboard_item == 1424 or items[billboard_item].blockType == BlockTypes::LOCK or items[billboard_item].blockType == BlockTypes::FISH) {
-									gamepacket_t p, p2;
-									p.Insert("OnConsoleMessage"), p.Insert("Item can not be untradeable."), p.CreatePacket(peer);
-									p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("Item can not be untradeable."), p2.Insert(0), p2.Insert(1), p2.CreatePacket(peer);
-								}
-								else {
-									pInfo(peer)->b_i = billboard_item;
-									if (pInfo(peer)->b_p != 0 && pInfo(peer)->b_i != 0) {
-										gamepacket_t p(0, pInfo(peer)->netID);
-										p.Insert("OnBillboardChange"), p.Insert(pInfo(peer)->netID), p.Insert(pInfo(peer)->b_i), p.Insert(pInfo(peer)->b_a), p.Insert(pInfo(peer)->b_p), p.Insert(pInfo(peer)->b_w);
-										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
-											p.CreatePacket(currentPeer);
-										}
-									}
-								}
-							}
+							Algorithm::send_bubble(peer, pInfo(peer)->netID, "Thank you for your report. Now leave this world so you don't get punished along with the scammers!");
 							break;
 						}
 						else if (cch.find("action|dialog_return") != string::npos) {
 							call_dialog(peer, cch);
 							break;
 						}
+						else if (cch.find("action|drop") != string::npos) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (pInfo(peer)->Cheat_FastDrop) {
+								if (p != worlds.end()) {
+									vector<string> t_ = explode("|", cch);
+									if (t_.size() < 4) break;
+									int id_ = atoi(explode("\n", t_[3])[0].c_str()), c_ = 0;
+									if (id_ <= 0 or id_ >= items.size()) break;
+									int dropCount = 0;
+									World* world_ = &worlds[p - worlds.begin()];
+									modify_inventory(peer, id_, c_);
+									dropCount = 0 - c_;
+									if (find(world_->active_jammers.begin(), world_->active_jammers.end(), 4758) != world_->active_jammers.end()) {
+										if (world_->owner_name != pInfo(peer)->tankIDName and not pInfo(peer)->dev and !guild_access(peer, world_->guild_id) and find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) {
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("The Mini-Mod says no dropping items in this world!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+											break;
+										}
+									}
+									if (items[id_].untradeable or id_ == 1424 or id_ == 5816) {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("You can't drop that.");
+										p.CreatePacket(peer);
+										break;
+									}
+									string name_ = pInfo(peer)->world;
+									vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+									if (p != worlds.end()) {
+										World* world_ = &worlds[p - worlds.begin()];
+										WorldDrop drop_{};
+										drop_.id = id_;
+										drop_.count = c_;
+										drop_.uid = uint16_t(world_->drop.size()) + 1;
+										int a_ = rand() % 12;
+										drop_.x = (pInfo(peer)->state == 16 ? pInfo(peer)->x - (a_ + 20) : (pInfo(peer)->x + 20) + a_);
+										drop_.y = pInfo(peer)->y + rand() % 16;
+										if (drop_.x / 32 < 0 or drop_.x / 32 >= 100 or drop_.y / 32 < 0 or drop_.y / 32 >= 60) {
+											gamepacket_t p;
+											p.Insert("OnTextOverlay");
+											p.Insert("You can't drop that here, face somewhere with open space.");
+											p.CreatePacket(peer);
+											break;
+										}
+										BlockTypes type_ = FOREGROUND;
+										WorldBlock* block_ = &world_->blocks[(pInfo(peer)->state == 16 ? drop_.x / 32 : round((double)drop_.x / 32)) + (drop_.y / 32 * 100)];
+										if (items[block_->fg].collisionType == 1 || block_->fg == 6 || items[block_->fg].entrance || items[block_->fg].toggleable and is_false_state(world_->blocks[(pInfo(peer)->state == 16 ? drop_.x / 32 : round((double)drop_.x / 32)) + (drop_.y / 32 * 100)], 0x00400000)) {
+											gamepacket_t p;
+											p.Insert("OnTextOverlay");
+											p.Insert(items[block_->fg].blockType == BlockTypes::MAIN_DOOR ? "You can't drop items on the white door." : "You can't drop that here, face somewhere with open space.");
+											p.CreatePacket(peer);
+											break;
+										}
+										int count_ = 0;
+										bool dublicated = false;
+										for (int i_ = 0; i_ < world_->drop.size(); i_++) {
+											if (abs(world_->drop[i_].y - drop_.y) <= 16 and abs(world_->drop[i_].x - drop_.x) <= 16) {
+												count_ += 1;
+											}
+											if (world_->drop[i_].id == id_) if (world_->drop[i_].count + drop_.count < 200) dublicated = true;
+										}
+										if (!dublicated) {
+											if (count_ > 20) {
+												gamepacket_t p;
+												p.Insert("OnTextOverlay");
+												p.Insert("You can't drop that here, find an emptier spot!");
+												p.CreatePacket(peer);
+												break;
+											}
+										}
+										int dropped = c_; bool Growganoth = false;
+										if (modify_inventory(peer, id_, dropCount) == 0) {
+											if (id_ == 7188) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously dropped " + to_string(drop_.count) + " Blue Gem Lock in World: " + pInfo(peer)->world + ".");
+											if (id_ == 1796 and drop_.count > 10) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously dropped " + to_string(drop_.count) + " Diamond Lock in World: " + pInfo(peer)->world + ".");
+											if (id_ == 242 and drop_.count == 200) send_user_logs(pInfo(peer)->tankIDName, "Suspiciously dropped " + to_string(drop_.count) + " World Lock in World: " + pInfo(peer)->world + ".");
+											Algorithm::log_text("DropLog", pInfo(peer)->tankIDName + " (#" + to_string(pInfo(peer)->uid) + ") dropped " + to_string(drop_.count) + " " + items[id_].ori_name + " in world " + pInfo(peer)->world);
+											/*
+											if (world_->name == "GROWGANOTH" && Halloween) {
+												if (drop_.x / 32 >= 47 and drop_.x / 32 <= 52 and drop_.y / 32 == 15) {
+													vector<int> Maw_Prize{};
+													bool Guaranteed_Drops = false, Consumable = false;
+													int Reward = 0, Give = 1, Give_Back = abs(dropped);
+													if (items[id_].consume_prize != 0 && items[id_].consume_needed != 0) Growganoth = true, Consumable = true;
+													if (items[id_].rarity != 0 && items[id_].rarity < 367) {
+														if (items[id_].rarity >= 1) Maw_Prize.push_back(1208);
+														if (items[id_].rarity >= 5) Maw_Prize.insert(Maw_Prize.end(), { 1992,5256,11348 });
+														if (items[id_].rarity >= 10) Maw_Prize.insert(Maw_Prize.end(), { 1222,11342,1198,12786 });
+														if (items[id_].rarity >= 15) Maw_Prize.insert(Maw_Prize.end(), { 1982,1200 });
+														if (items[id_].rarity >= 20) Maw_Prize.insert(Maw_Prize.end(), { 4160,1220,10198 });
+														if (items[id_].rarity >= 25) Maw_Prize.insert(Maw_Prize.end(), { 5240,1202 });
+														if (items[id_].rarity >= 30) Maw_Prize.insert(Maw_Prize.end(), { 1238,5238,4162,10316,10196,10196 });
+														if (items[id_].rarity >= 35) Maw_Prize.insert(Maw_Prize.end(), { 9044,1168 });
+														if (items[id_].rarity >= 40) Maw_Prize.insert(Maw_Prize.end(), { 3116,4164,1172,12788 });
+														if (items[id_].rarity >= 45) Maw_Prize.push_back(1230);
+														if (items[id_].rarity >= 50) Maw_Prize.insert(Maw_Prize.end(), { 1192,11340,1194,10202 });
+														if (items[id_].rarity >= 55) Maw_Prize.insert(Maw_Prize.end(), { 1226,7108 });
+														if (items[id_].rarity >= 60) Maw_Prize.insert(Maw_Prize.end(), { 1196,12784 });
+														if (items[id_].rarity >= 65) Maw_Prize.insert(Maw_Prize.end(), { 1236,9046 });
+														if (items[id_].rarity >= 70) Maw_Prize.insert(Maw_Prize.end(), { 1980,1972,7110,1182,1994,1184,1186,1188,11330 });
+														if (items[id_].rarity >= 73) Maw_Prize.insert(Maw_Prize.end(), { 10204,3102,4154,5232,5224,5222 });
+														if (items[id_].rarity >= 75) Maw_Prize.push_back(1988);
+														if (items[id_].rarity >= 80) Maw_Prize.insert(Maw_Prize.end(), { 4158,7128,1170,12790 });
+														if (items[id_].rarity >= 85) Maw_Prize.push_back(1984);
+														if (items[id_].rarity >= 90) Maw_Prize.insert(Maw_Prize.end(), { 1216,1218,5248,7114,10322,7112 });
+														if (items[id_].rarity >= 97) Maw_Prize.push_back(3106);
+														if (items[id_].rarity >= 100) Maw_Prize.push_back(7130);
+														if (items[id_].rarity >= 101) Maw_Prize.push_back(3110);
+														Reward = Maw_Prize[rand() % Maw_Prize.size()];
+														Growganoth = true;
+													}
+													if (id_ == 10328) {
+														gamepacket_t p;
+														p.Insert("OnProgressUIUpdateValue"); p.Insert(pInfo(peer)->Darking_Sacrifice); p.Insert(0); p.CreatePacket(peer);
+														Maw_Prize = { 12772, 12416, 12396, 12418, 12420, 12780, 10236  ,  4152  , 3114  , 1250  , 11314  , 3108  , 1956  , 11332  , 11336  , 11334  , 9042  ,9048  , 3126  , 10186  , 1990  , 1968  , 4166  , 5208  , 9056  , 7122  , 4172  , 4156  , 1234  , 5250  , 5254  , 5252  , 4138  , 4146  , 4140  , 4142  , 4148  , 4144  , 2000  , 1960  , 5210  , 1948  , 1214  , 7100  , 1966  , 1962  , 4188  , 4186  , 4190  , 10192  , 4136  , 10212  , 5236  , 5216  , 5218  , 5220  , 5214  , 4248  , 4182  , 4246  , 3098  , 5244  , 5256  , 10232  , 3118  , 10194  , 4192  , 1178  , 11316  , 1232  , 3124  , 11312  , 9040  , 10190  , 9034  , 3122  , 9050  , 9054  , 9052  , 7126  , 10200  , 10234  , 7124  , 11320  , 1210, 9018 };
+														if (rand() % 1000 < 1 or pInfo(peer)->tankIDName == "Ritshu" and pInfo(peer)->hand == 5176) Maw_Prize = { 5176, 1970, 12414, 9114, 11322, 7104, 10206, 11318, 10184, 3100, 7102 };
+														Reward = Maw_Prize[rand() % Maw_Prize.size()];
+														Growganoth = true;
+														int Give_Again = Give_Back - 1;
+														if (abs(dropped) > 1) modify_inventory(peer, id_, Give_Again);
+														dropped = 1;
+													}
+													if (id_ == 1950) Growganoth = true, Guaranteed_Drops = true, Reward = 4152;
+													if (id_ == 2722) Growganoth = true, Guaranteed_Drops = true, Reward = 3114;
+													if (id_ == 910) Growganoth = true, Guaranteed_Drops = true, Reward = 1250;
+													if (id_ == 11046) Growganoth = true, Guaranteed_Drops = true, Reward = 11314;
+													if (id_ == 94 or id_ == 2636 or id_ == 604 or id_ == 1956) Growganoth = true, Guaranteed_Drops = true, Reward = 3108;
+													if (id_ == 276 or id_ == 274) Growganoth = true, Guaranteed_Drops = true, Reward = 1956;
+													if (id_ == 6300) Growganoth = true, Guaranteed_Drops = true, Reward = 7102;
+													if (id_ == 10730) Growganoth = true, Guaranteed_Drops = true, Reward = 11332;
+													if (id_ == 10734) Growganoth = true, Guaranteed_Drops = true, Reward = 11350;
+													if (id_ == 10732) Growganoth = true, Guaranteed_Drops = true, Reward = 11334;
+													if (id_ == 6176) Growganoth = true, Guaranteed_Drops = true, Reward = 9042;
+													if (id_ == 3040) Growganoth = true, Guaranteed_Drops = true, Reward = 3100;
+													if (id_ == 6144) Growganoth = true, Guaranteed_Drops = true, Reward = 7104;
+													if (id_ == 7998) Growganoth = true, Guaranteed_Drops = true, Reward = 9048;
+													if (id_ == 1162) Growganoth = true, Guaranteed_Drops = true, Reward = 3126;
+													if (id_ == 9322) Growganoth = true, Guaranteed_Drops = true, Reward = 10184;
+													if (id_ == 7696) Growganoth = true, Guaranteed_Drops = true, Reward = 10186;
+													if (id_ == 1474) Growganoth = true, Guaranteed_Drops = true, Reward = 1990;
+													if (id_ == 1506) Growganoth = true, Guaranteed_Drops = true, Reward = 1968;
+													if (id_ == 2386) Growganoth = true, Guaranteed_Drops = true, Reward = 4166;
+													if (id_ == 9364) Growganoth = true, Guaranteed_Drops = true, Reward = 10206;
+													if (id_ == 10576) Growganoth = true, Guaranteed_Drops = true, Reward = 11322;
+													if (id_ == 4960) Growganoth = true, Guaranteed_Drops = true, Reward = 5208;
+													if (id_ == 6196) Growganoth = true, Guaranteed_Drops = true, Reward = 9056;
+													if (id_ == 4326) Growganoth = true, Guaranteed_Drops = true, Reward = 7122;
+													if (id_ == 2860 or id_ == 2268) Growganoth = true, Guaranteed_Drops = true, Reward = 4172;
+													if (id_ == 1114) Growganoth = true, Guaranteed_Drops = true, Reward = 4156;
+													if (id_ == 362) Growganoth = true, Guaranteed_Drops = true, Reward = 1234;
+													if (id_ == 11574) Growganoth = true, Guaranteed_Drops = true, Reward = 12772;
+													if (id_ == 4334) Growganoth = true, Guaranteed_Drops = true, Reward = 5250;
+													if (id_ == 4338) Growganoth = true, Guaranteed_Drops = true, Reward = 5252;
+													if (id_ == 1408) Growganoth = true, Guaranteed_Drops = true, Reward = 5254;
+													if (id_ == 3288) Growganoth = true, Guaranteed_Drops = true, Reward = 4138;
+													if (id_ == 3290) Growganoth = true, Guaranteed_Drops = true, Reward = 4140;
+													if (id_ == 3292) Growganoth = true, Guaranteed_Drops = true, Reward = 4142;
+													if (id_ == 3294) Growganoth = true, Guaranteed_Drops = true, Reward = 4144;
+													if (id_ == 3296) Growganoth = true, Guaranteed_Drops = true, Reward = 4146;
+													if (id_ == 3298) Growganoth = true, Guaranteed_Drops = true, Reward = 4148;
+													if (id_ == 900 or id_ == 7752 or id_ == 7754 or id_ == 7136 or id_ == 1576 or id_ == 1378 or id_ == 7758 or id_ == 7760 or id_ == 7748) Growganoth = true, Guaranteed_Drops = true, Reward = 2000;
+													if (id_ == 1746) Growganoth = true, Guaranteed_Drops = true, Reward = 1960;
+													if (id_ == 5018) Growganoth = true, Guaranteed_Drops = true, Reward = 5210;
+													if (id_ == 1252) Growganoth = true, Guaranteed_Drops = true, Reward = 1948;
+													if (id_ == 1190) Growganoth = true, Guaranteed_Drops = true, Reward = 1214;
+													if (id_ == 2868) Growganoth = true, Guaranteed_Drops = true, Reward = 7100;
+													if (id_ == 11638) Growganoth = true, Guaranteed_Drops = true, Reward = 12780;
+													if (id_ == 11534) Growganoth = true, Guaranteed_Drops = true, Reward = 12416;
+													if (id_ == 1830) Growganoth = true, Guaranteed_Drops = true, Reward = 1966;
+													if (items[id_].name.find("Chemical") != string::npos and id_ != 1962) Growganoth = true, Guaranteed_Drops = true, Reward = 1962;
+													if (id_ == 3556) {
+														Maw_Prize.insert(Maw_Prize.end(), { 4186, 4188 });
+														Growganoth = true, Guaranteed_Drops = true, Reward = Maw_Prize[rand() % Maw_Prize.size()];
+													}
+													if (id_ == 762) Growganoth = true, Guaranteed_Drops = true, Reward = 4190;
+													if (id_ == 3818) Growganoth = true, Guaranteed_Drops = true, Reward = 10192;
+													if (id_ == 366) Growganoth = true, Guaranteed_Drops = true, Reward = 4136;
+													if (id_ == 9262) Growganoth = true, Guaranteed_Drops = true, Reward = 10212;
+													if (id_ == 5236) Growganoth = true, Guaranteed_Drops = true, Reward = 1294;
+													if (id_ == 1246) Growganoth = true, Guaranteed_Drops = true, Reward = 5214;
+													if (id_ == 1242) Growganoth = true, Guaranteed_Drops = true, Reward = 5216;
+													if (id_ == 1244) Growganoth = true, Guaranteed_Drops = true, Reward = 5218;
+													if (id_ == 1248) Growganoth = true, Guaranteed_Drops = true, Reward = 5220;
+													if (id_ == 7026 or id_ == 7028 or id_ == 7030) Growganoth = true, Guaranteed_Drops = true, Reward = 12396;
+													if (id_ == 3016 or id_ == 3018 or id_ == 5526 or id_ == 5528) Growganoth = true, Guaranteed_Drops = true, Reward = 4248;
+													if (id_ == 3012 or id_ == 3014 or id_ == 2914) Growganoth = true, Guaranteed_Drops = true, Reward = 4246;
+													if (id_ == 242) Growganoth = true, Guaranteed_Drops = true, Reward = 1212;
+													if (id_ == 2972) Growganoth = true, Guaranteed_Drops = true, Reward = 4182;
+													if (id_ == 1460) Growganoth = true, Guaranteed_Drops = true, Reward = 1970;
+													if (id_ == 2392) Growganoth = true, Guaranteed_Drops = true, Reward = 9114;
+													if (id_ == 3218 or id_ == 3020) Growganoth = true, Guaranteed_Drops = true, Reward = 3098;
+													if (id_ == 3792) Growganoth = true, Guaranteed_Drops = true, Reward = 5244;
+													if (id_ == 10634) Growganoth = true, Guaranteed_Drops = true, Reward = 11318;
+													if (id_ == 1198) Growganoth = true, Guaranteed_Drops = true, Reward = 5256;
+													if (id_ == 8468) Growganoth = true, Guaranteed_Drops = true, Reward = 10232;
+													if (id_ == 2984) Growganoth = true, Guaranteed_Drops = true, Reward = 3118;
+													if (id_ == 4360) Growganoth = true, Guaranteed_Drops = true, Reward = 10194;
+													if (id_ == 10148) Growganoth = true, Guaranteed_Drops = true, Reward = 12418;
+													if (items[id_].name.find("Sheet Music: ") != string::npos and id_ != 4192 or id_ == 412) Growganoth = true, Guaranteed_Drops = true, Reward = 4192;
+													if (id_ == 5012 or id_ == 1018 or id_ == 592) Growganoth = true, Guaranteed_Drops = true, Reward = 1178;
+													if (id_ == 10406) Growganoth = true, Guaranteed_Drops = true, Reward = 11316;
+													if (id_ == 10652) Growganoth = true, Guaranteed_Drops = true, Reward = 12420;
+													if (id_ == 882) Growganoth = true, Guaranteed_Drops = true, Reward = 1232;
+													if (id_ == 1934) Growganoth = true, Guaranteed_Drops = true, Reward = 3124;
+													if (id_ == 10626) Growganoth = true, Guaranteed_Drops = true, Reward = 11312;
+													if (id_ == 6160) Growganoth = true, Guaranteed_Drops = true, Reward = 9040;
+													if (id_ == 3794) Growganoth = true, Guaranteed_Drops = true, Reward = 10190;
+													if (id_ == 8018) Growganoth = true, Guaranteed_Drops = true, Reward = 9034;
+													if (id_ == 2390) Growganoth = true, Guaranteed_Drops = true, Reward = 3122;
+													if (id_ == 9050) Growganoth = true, Guaranteed_Drops = true, Reward = 5246;
+													if (id_ == 9052) Growganoth = true, Guaranteed_Drops = true, Reward = 5246;
+													if (id_ == 9054) Growganoth = true, Guaranteed_Drops = true, Reward = 5246;
+													if (id_ == 6798) Growganoth = true, Guaranteed_Drops = true, Reward = 7126;
+													if (id_ == 9722 or id_ == 9724) Growganoth = true, Guaranteed_Drops = true, Reward = 10200;
+													if (id_ == 9388) Growganoth = true, Guaranteed_Drops = true, Reward = 10234;
+													if (id_ == 4732) Growganoth = true, Guaranteed_Drops = true, Reward = 7124;
+													if (id_ == 10804) Growganoth = true, Guaranteed_Drops = true, Reward = 11320;
+													if (id_ == 11666) Growganoth = true, Guaranteed_Drops = true, Reward = 12414;
+													if (items[id_].name.find("Weather Machine - ") != string::npos and id_ != 932 or id_ == 8836 or id_ == 1210) Growganoth = true, Guaranteed_Drops = true, Reward = 1210;
+													if (id_ != 0 and Reward == 0) Growganoth = true;
+													if (Growganoth) {
+														gamepacket_t a, b;
+														a.Insert("OnTalkBubble"), a.Insert(pInfo(peer)->netID);
+														b.Insert("OnConsoleMessage");
+														if (Reward != 0) {
+															gamepacket_t p, p2;
+															if (Consumable) a.Insert("`4Growganoth turns your " + items[id_].ori_name + " into an " + items[items[id_].consume_prize].ori_name + " and hatches it with evil!``"), b.Insert("`4Growganoth turns your " + items[id_].ori_name + " into an " + items[items[id_].consume_prize].ori_name + " and hatches it with evil!``"), b.CreatePacket(peer);
+															else a.Insert("`4Growganoth is pleased by your offering and grants a reward! Also, he eats you.``"), b.Insert("`4Growganoth is pleased by your offering and grants a reward! Also, he eats you.``"), b.CreatePacket(peer);
+															p.Insert("OnConsoleMessage"), p.Insert("" + (string(abs(dropped) != 1 ? to_string(abs(dropped)) + " " : "")) + "`2" + items[id_].ori_name + "`` was devoured by Growganoth!"), p.CreatePacket(peer);
+															p2.Insert("OnConsoleMessage");
+															if (Guaranteed_Drops) {
+																if (modify_inventory(peer, Reward, Give_Back) == 0) {
+																	p2.Insert((string(abs(dropped) != 1 ? to_string(abs(dropped)) : "A")) + " `2" + items[Reward].ori_name + "`` was bestowed upon you!");
+																	p2.CreatePacket(peer);
+																}
+																else {
+																	modify_inventory(peer, id_, Give_Back);
+																	p2.Insert("Nothing was upon to you! you didn't have enough inventory!");
+																	p2.CreatePacket(peer);
+																}
+															}
+															else {
+																if (modify_inventory(peer, Reward, Give) == 0) {
+																	p2.Insert("A `2" + items[Reward].ori_name + "`` was bestowed upon you!");
+																	p2.CreatePacket(peer);
+																}
+																else {
+																	if (id_ == 10328) Give_Back = 1;
+																	modify_inventory(peer, id_, Give_Back);
+																	p2.Insert("Nothing was upon to you! you didn't have enough inventory!");
+																	p2.CreatePacket(peer);
+																}
+															}
+															if (Guaranteed_Drops) {
+																gamepacket_t a, b;
+																a.Insert("OnTalkBubble"), a.Insert(pInfo(peer)->netID);
+																b.Insert("OnConsoleMessage"); a.Insert("`4Growganoth rejects your puny offering and eats you instead!``"), b.Insert("`4Growganoth rejects your puny offering and eats you instead!``"), b.CreatePacket(peer);
+																a.Insert(0), a.Insert(0), a.CreatePacket(peer);
+															}
+															if (Reward == 9488 || Reward == 1970 || Reward == 12414 || Reward == 9114 || Reward == 11322 || Reward == 7104 || Reward == 10206 || Reward == 11318 || Reward == 10184 || Reward == 3100 || Reward == 7102) {
+																if (id_ == 10328) {
+																	gamepacket_t p;
+																	p.Insert("OnConsoleMessage"), p.Insert("`4Growganoth`` honors " + (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name) + "`` with a `5Rare " + items[Reward].name + "`` for their Dark King's Offering!");
+																	for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																		if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																		p.CreatePacket(currentPeer);
+																	}
+																	lastsbworld = pInfo(peer)->world;
+																}
+															}
+														}
+														else {
+															a.Insert("`4Growganoth rejects your puny offering and eats you instead!``"), b.Insert("`4Growganoth rejects your puny offering and eats you instead!``"), b.CreatePacket(peer);
+															modify_inventory(peer, id_, Give_Back);
+														}
+														a.Insert(0), a.Insert(0), a.CreatePacket(peer);
+														SendRespawn(peer, true, 0, 1);
+													}
+												}
+												else {
+													int Give_Back = abs(dropped);
+													gamepacket_t p;
+													p.Insert("OnTextOverlay");
+													p.Insert("Not close enough to the maw!");
+													p.CreatePacket(peer);
+													modify_inventory(peer, id_, Give_Back);
+													break;
+												}
+											}
+											*/
+
+											add_cctv(peer, "dropped", to_string(abs(dropped)) + " " + items[id_].name);
+											if (!Growganoth) dropas_(world_, drop_, pInfo(peer)->netID);
+										}
+									}
+								}
+							}
+							else {
+								if (p != worlds.end()) {
+									World* world_ = &worlds[p - worlds.begin()];
+									vector<string> t_ = explode("|", cch);
+									if (t_.size() < 4) break;
+									int id_ = atoi(explode("\n", t_[3])[0].c_str()), c_ = 0;
+									if (id_ <= 0 or id_ >= items.size()) break;
+									if (find(world_->active_jammers.begin(), world_->active_jammers.end(), 4758) != world_->active_jammers.end()) {
+										if (world_->owner_name != (not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : pInfo(peer)->tankIDName) and not pInfo(peer)->dev and find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) {
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("The Mini-Mod says no dropping items in this world!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+											break;
+										}
+									}
+									if (check_transmuted(peer, id_)) {
+										gamepacket_t p;
+										p.Insert("OnTalkBubble"),
+											p.Insert(pInfo(peer)->netID),
+											p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+											p.CreatePacket(peer);
+										break;
+									}
+									if (items[id_].untradeable or id_ == 1424) {
+										gamepacket_t p;
+										p.Insert("OnTextOverlay");
+										p.Insert("You can't drop that.");
+										p.CreatePacket(peer);
+										break;
+									}
+									string name_ = pInfo(peer)->world;
+									vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+									if (p != worlds.end()) {
+										World* world_ = &worlds[p - worlds.begin()];
+										int a_ = rand() % 12;
+										int x = (pInfo(peer)->state == 16 ? pInfo(peer)->x - (a_ + 20) : (pInfo(peer)->x + 20) + a_);
+										int y = pInfo(peer)->y + rand() % 16;
+										//BlockTypes type_ = FOREGROUND;
+										int where_ = (pInfo(peer)->state == 16 ? x / 32 : round((double)x / 32)) + (y / 32 * 100);
+										if (where_ < 0 || x < 0 || y < 0 || where_ > 5399) continue;
+										WorldBlock* block_ = &world_->blocks[where_];
+										if (items[block_->fg].collisionType == 1 || block_->fg == 6 || items[block_->fg].entrance || items[block_->fg].toggleable and is_false_state(world_->blocks[(pInfo(peer)->state == 16 ? x / 32 : round((double)x / 32)) + (y / 32 * 100)], 0x00400000)) {
+											gamepacket_t p;
+											p.Insert("OnTextOverlay");
+											p.Insert(items[block_->fg].blockType == BlockTypes::MAIN_DOOR ? "You can't drop items on the white door." : "You can't drop that here, face somewhere with open space.");
+											p.CreatePacket(peer);
+											break;
+										}
+										int count_ = 0;
+										bool dublicated = false;
+										for (int i_ = 0; i_ < world_->drop.size(); i_++) {
+											if (abs(world_->drop[i_].y - y) <= 16 and abs(world_->drop[i_].x - x) <= 16) {
+												count_ += 1;
+											}
+											if (world_->drop[i_].id == id_) if (world_->drop[i_].count < 200) dublicated = true;
+										}
+										if (!dublicated) {
+											if (count_ > 20) {
+												gamepacket_t p;
+												p.Insert("OnTextOverlay");
+												p.Insert("You can't drop that here, find an emptier spot!");
+												p.CreatePacket(peer);
+												break;
+											}
+										}
+									}
+									modify_inventory(peer, id_, c_);
+									{
+										gamepacket_t p;
+										p.Insert("OnDialogRequest");
+										p.Insert("set_default_color|`o\nadd_label_with_icon|big|`w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|How many to drop?|left|\nadd_text_input|count||" + to_string(c_) + "|5|\nembed_data|itemID|" + to_string(id_) + "" + (world_->owner_name != pInfo(peer)->tankIDName and not pInfo(peer)->dev and (!guild_access(peer, world_->guild_id) and find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) == world_->admins.end()) ? "\nadd_textbox|If you are trying to trade an item with another player, use your wrench on them instead to use our Trade System! `4Dropping items is not safe!``|left|" : "") + "\nend_dialog|drop_item|Cancel|OK|");
+										p.CreatePacket(peer);
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|setRoleIcon") != string::npos || cch.find("action|setRoleSkin") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 3) break;
+							string id_ = explode("\n", t_[2])[0];
+							if (not isdigit(id_[0])) break;
+							uint32_t role_t = atoi(id_.c_str());
+							/*
+							* 0 = farmer
+							* 1 = builder
+							* 2 = doctor
+							* 3 = fisherman
+							* 4 = chef
+							* 5 = startopia
+							* 6 = default
+							*/
+							if (cch.find("action|setRoleIcon") != string::npos) {
+								if (role_t == 6) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 0 and pInfo(peer)->t_lvl >= 50) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 1 and pInfo(peer)->bb_lvl >= 50) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 2 and pInfo(peer)->titleDoctor) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 3 and pInfo(peer)->titleFisher) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 4 and pInfo(peer)->titleChef) pInfo(peer)->roleIcon = role_t;
+								else if (role_t == 5 and pInfo(peer)->titleStartopia) pInfo(peer)->roleIcon = role_t;
+							}
+							else {
+								if (role_t == 6) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 0 and pInfo(peer)->t_lvl >= 50) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 1 and pInfo(peer)->bb_lvl >= 50) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 2 and pInfo(peer)->unlockRoleSkin) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 3 and pInfo(peer)->unlockRoleSkin) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 4 and pInfo(peer)->unlockRoleSkin) pInfo(peer)->roleSkin = role_t;
+								else if (role_t == 5 and pInfo(peer)->unlockRoleSkin) pInfo(peer)->roleSkin = role_t;
+							}
+							gamepacket_t p(0, pInfo(peer)->netID);
+							p.Insert("OnSetRoleSkinsAndIcons"), p.Insert(pInfo(peer)->roleSkin), p.Insert(pInfo(peer)->roleIcon), p.Insert(0);
+							for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+								if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL or pInfo(currentPeer)->world != pInfo(peer)->world) continue;
+								p.CreatePacket(currentPeer);
+							}
+							break;
+						}
+						else if (cch.find("action|setSkin") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 3) break;
+							string id_ = explode("\n", t_[2])[0];
+							if (not isdigit(id_[0])) break;
+							char* endptr = NULL;
+							unsigned int skin_ = strtoll(id_.c_str(), &endptr, 10);
+							if (skin_ == 3531226367 and pInfo(peer)->supp == 2 or skin_ == 4023103999 and pInfo(peer)->supp == 2 or skin_ == 1345519520 and pInfo(peer)->supp == 2 or skin_ == 194314239 and pInfo(peer)->supp == 2) pInfo(peer)->skin = skin_;
+							else if (skin_ == 3578898848 and pInfo(peer)->gp or skin_ == 3317842336 and pInfo(peer)->gp) pInfo(peer)->skin = skin_;
+							else if (skin_ != 1348237567 and skin_ != 1685231359 and skin_ != 2022356223 and skin_ != 2190853119 and skin_ != 2527912447 and skin_ != 2864971775 and skin_ != 3033464831 and skin_ != 3370516479) {
+								if (pInfo(peer)->supp >= 1) {
+									if (skin_ != 2749215231 and skin_ != 3317842431 and skin_ != 726390783 and skin_ != 713703935 and skin_ != 3578898943 and skin_ != 4042322175) break;
+									else pInfo(peer)->skin = skin_;
+								}
+								else break;
+							}
+							else pInfo(peer)->skin = skin_;
+							update_clothes(peer);
+							break;
+						}
+						else if (cch.find("action|trash") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 4) break;
+							int id_ = atoi(explode("\n", t_[3])[0].c_str()), c_ = 0;
+							if (id_ <= 0 or id_ >= items.size()) break;
+							gamepacket_t p;
+							if (id_ == 18 || id_ == 32) {
+								packet_(peer, "action|play_sfx\nfile|audio/cant_place_tile.wav\ndelayMS|0");
+								p.Insert("OnTextOverlay"), p.Insert("You'd be sorry if you lost that!"), p.CreatePacket(peer);
+								break;
+							}
+							if (check_transmuted(peer, id_)) {
+								gamepacket_t p;
+								p.Insert("OnTalkBubble"),
+									p.Insert(pInfo(peer)->netID),
+									p.Insert("`4This item has been transmuted. You need to keep at least one item in your inventory!"),
+									p.CreatePacket(peer);
+								break;
+							}
+							modify_inventory(peer, id_, c_); // gauna itemo kieki
+							if (pInfo(peer)->Cheat_FastTrash) {
+								int adaBrp = c_, hapusBrp = 0;
+								hapusBrp = 0 - c_;
+								if (items[id_].untradeable) {
+									int has_ = 0;
+									modify_inventory(peer, id_, has_);
+									if (has_ < c_) break;
+									gamepacket_t p;
+									p.Insert("OnDialogRequest");
+									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Recycle`` " + to_string(adaBrp) + " `w" + items[id_].name + "``|left|" + to_string(id_) + "|\nembed_data|itemID|" + to_string(id_) + "\nembed_data|count|" + to_string(adaBrp) + "\nadd_textbox|You are recycling an `9UNTRADEABLE`` item. Are you absolutely sure you want to do this? There is no way to get the item back if you select yes.|left|\nend_dialog|trash_item2|NO!|Yes, I am sure|");
+									p.CreatePacket(peer);
+									break;
+								}
+								if (modify_inventory(peer, id_, hapusBrp) == 0) {
+									packet_(peer, "action|play_sfx\nfile|audio/trash.wav\ndelayMS|0");
+									gamepacket_t p;
+									p.Insert("OnConsoleMessage");
+									if (pInfo(peer)->supp != 0) {
+										int item = id_, maxgems = 0, receivegems = 0;
+										int count = adaBrp;
+										if (id_ % 2 != 0) item -= 1;
+										maxgems = items[item].max_gems2;
+										if (items[item].max_gems2 != 0) if (maxgems != 0) for (int i = 0; i < count; i++) receivegems += rand() % maxgems;
+										if (items[item].max_gems3 != 0) receivegems = count * items[item].max_gems3;
+										if (receivegems != 0) {
+											pInfo(peer)->gems += receivegems;
+											gamepacket_t p;
+											p.Insert("OnSetBux");
+											p.Insert(pInfo(peer)->gems);
+											p.Insert(0);
+											p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) {
+												p.Insert((float)33796, (float)1, (float)0);
+											}
+											p.CreatePacket(peer);
+										}
+										p.Insert((items[id_].blockType == BlockTypes::FISH ? (to_string(abs(c_))) + "lb." : to_string(adaBrp)) + " `w" + items[id_].ori_name + "`` recycled, `0" + setGems(receivegems) + "`` gems earned.");
+									}
+									else p.Insert((items[id_].blockType == BlockTypes::FISH ? (to_string(abs(c_))) + "lb." : to_string(adaBrp)) + " `w" + items[id_].ori_name + "`` trashed.");
+									p.CreatePacket(peer);
+									break;
+								}
+								break;
+							}
+							else {
+								p.Insert("OnDialogRequest");
+								if (pInfo(peer)->supp == 0) p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Trash`` `w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|How many to `4destroy``? (you have " + to_string(c_) + ")|left|\nadd_text_input|count||0|5|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|trash_item|Cancel|OK|");
+								else {
+									int item = id_, maxgems = 0, maximum_gems = 0;
+									if (id_ % 2 != 0) item -= 1;
+									maxgems = items[item].max_gems2;
+									if (items[item].max_gems3 != 0) maximum_gems = items[item].max_gems3;
+									string recycle_text = "0" + (maxgems == 0 ? "" : "-" + to_string(maxgems)) + "";
+									if (maximum_gems != 0) recycle_text = to_string(maximum_gems);
+									p.Insert("set_default_color|`o\nadd_label_with_icon|big|`4Recycle`` `w" + items[id_].ori_name + "``|left|" + to_string(id_) + "|\nadd_textbox|You will get " + recycle_text + " gems per item.|\nadd_textbox|How many to `4destroy``? (you have " + to_string(c_) + ")|left|\nadd_text_input|count||0|5|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|trash_item|Cancel|OK|");
+								}
+								p.CreatePacket(peer);
+								break;
+							}
+							break;
+						}
+						else if (cch.find("action|info") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 4) break;
+							gamepacket_t p;
+							p.Insert("OnDialogRequest");
+							int id_ = atoi(explode("\n", t_[3])[0].c_str());
+							if (id_ % 2 != 0) p.Insert("set_default_color|`o\nadd_label_with_ele_icon|big|`wAbout " + items[id_].ori_name + "``|left|" + to_string(id_) + "|" + to_string(items[id_ - 1].chi) + "|\nadd_spacer|small|\nadd_textbox|Plant this seed to grow a `0" + items[id_ - 1].ori_name + " Tree.``|left|\nadd_spacer|small|\nadd_textbox|Rarity: `0" + to_string(items[id_].rarity) + "``|left|\nadd_spacer|small|\nend_dialog|continue||OK|\n");
+							else {
+								string extra_ = "\nadd_textbox|";
+								if (id_ == 18) {
+									extra_ += "You've punched `w" + to_string(pInfo(peer)->punch_count) + "`` times.";
+								} if (items[id_].blockType == BlockTypes::LOCK) {
+									extra_ += "A lock makes it so only you (and designated friends) can edit an area.";
+								} if (items[id_].r_1 == 0 or items[id_].r_2 == 0) {
+									extra_ += "<CR>This item can't be spliced.";
+								}
+								else {
+									extra_ += "Rarity: `w" + to_string(items[id_].rarity) + "``<CR><CR>To grow, plant a `w" + items[id_ + 1].name + "``.   (Or splice a `w" + items[items[id_].r_1].name + "`` with a `w" + items[items[id_].r_2].name + "``)<CR>";
+								} if (items[id_].properties & Property_Dropless or items[id_].rarity == 999) {
+									extra_ += "<CR>`1This item never drops any seeds.``";
+								} if (items[id_].properties & Property_Untradable) {
+									extra_ += "<CR>`1This item cannot be dropped or traded.``";
+								} if (items[id_].properties & Property_AutoPickup) {
+									extra_ += "<CR>`1This item can't be destroyed - smashing it will return it to your backpack if you have room!``";
+								} if (items[id_].properties & Property_Wrenchable) {
+									extra_ += "<CR>`1This item has special properties you can adjust with the Wrench.``";
+								} if (items[id_].properties & Property_MultiFacing) {
+									extra_ += "<CR>`1This item can be placed in two directions, depending on the direction you're facing.``";
+								} if (items[id_].properties & Property_NoSelf) {
+									extra_ += "<CR>`1This item has no use... by itself.``";
+								}
+								extra_ += "|left|";
+								if (extra_ == "\nadd_textbox||left|") extra_ = "";
+								else extra_ = replace_str(extra_, "add_textbox|<CR>", "add_textbox|");
+
+								string extra_ore = "";
+								if (id_ == 9386) extra_ore = rare_text;
+								if (id_ == 9384) extra_ore = rare2_text;
+								if (id_ == 7782) extra_ore = rainbow_text;
+								p.Insert("set_default_color|`o\nadd_label_with_ele_icon|big|`wAbout " + items[id_].name + "``|left|" + to_string(id_) + "|" + to_string(items[id_].chi) + "|\nadd_spacer|small|\nadd_textbox|" + items[id_].description + "|left|" + (extra_ore != "" ? "\nadd_spacer|small|\nadd_textbox|This item also drops:|left|" + extra_ore : "") + "" + (id_ == 8552 ? "\nadd_spacer|small|\nadd_textbox|Angelic Healings: " + to_string(pInfo(peer)->surgery_done) + "|left|" : "") + "\nadd_spacer|small|" + extra_ + "\nadd_spacer|small|\nembed_data|itemID|" + to_string(id_) + "\nend_dialog|continue||OK|\n");
+							}
+							p.CreatePacket(peer);
+							break;
+						}
+						else if (cch.find("action|wrench") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 4) break;
+							int netID = atoi(explode("\n", t_[3])[0].c_str());
+							if (pInfo(peer)->netID == netID) {
+								send_wrench_self(peer);
+							}
+							else {
+								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+									if (pInfo(currentPeer)->netID == netID and pInfo(currentPeer)->world == pInfo(peer)->world) {
+										if (pInfo(peer)->Cheat_FastPull) {
+											if (pInfo(peer)->mod or pInfo(peer)->dev) SendCmd(peer, "/summon " + pInfo(currentPeer)->tankIDName);
+											else SendCmd(peer, "/pull " + pInfo(currentPeer)->tankIDName);
+											break;
+										}
+										bool already_friends = false, trade_blocked = false, muted = false;
+										for (int c_ = 0; c_ < pInfo(peer)->friends.size(); c_++) {
+											if (pInfo(peer)->friends[c_].name == pInfo(currentPeer)->tankIDName) {
+												already_friends = true;
+												if (pInfo(peer)->friends[c_].block_trade)
+													trade_blocked = true;
+												if (pInfo(peer)->friends[c_].mute)
+													muted = true;
+												break;
+											}
+										}
+										pInfo(peer)->last_wrenched = pInfo(currentPeer)->tankIDName;
+										string name_ = pInfo(peer)->world;
+										vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+										if (p != worlds.end()) {
+											World* world_ = &worlds[p - worlds.begin()];
+											string msg2 = "";
+											for (int i = 0; i < to_string(pInfo(currentPeer)->level).length(); i++) msg2 += "?";
+											string inv_guild = "";
+											string extra = "";
+											if (pInfo(currentPeer)->guild_id != 0) {
+												uint32_t guild_id = pInfo(currentPeer)->guild_id;
+												vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
+												if (find_guild != guilds.end()) {
+													Guild* guild_information = &guilds[find_guild - guilds.begin()];
+													for (GuildMember member_search : guild_information->guild_members) {
+														if (member_search.member_name == pInfo(currentPeer)->tankIDName) {
+															if (guild_information->guild_mascot[1] == 0 and guild_information->guild_mascot[0] == 0) {
+																extra += "\nadd_label_with_icon|small|`9Guild: `2" + guild_information->guild_name + "``|left|5814|\nadd_textbox|`9Rank: `2" + (member_search.role_id == 0 ? "Member" : (member_search.role_id == 1 ? "Elder" : (member_search.role_id == 2 ? "Co-Leader" : "Leader"))) + "``|left|\nadd_spacer|small|";
+															}
+															else {
+																extra += "\nadd_dual_layer_icon_label|small|`9Guild: `2" + guild_information->guild_name + "``|left|" + to_string(guild_information->guild_mascot[1]) + "|" + to_string(guild_information->guild_mascot[0]) + "|1.0|1|\nadd_smalltext|`9Rank: `2" + (member_search.role_id == 0 ? "Member" : (member_search.role_id == 1 ? "Elder" : (member_search.role_id == 2 ? "Co-Leader" : "Leader"))) + "``|left|\nadd_spacer|small|";
+															}
+															break;
+														}
+													}
+												}
+											} if (pInfo(peer)->guild_id != 0 and pInfo(currentPeer)->guild_id == 0) {
+												uint32_t guild_id = pInfo(peer)->guild_id;
+												vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
+												if (find_guild != guilds.end()) {
+													Guild* guild_information = &guilds[find_guild - guilds.begin()];
+													for (GuildMember member_search : guild_information->guild_members) {
+														if (member_search.member_name == pInfo(peer)->tankIDName) {
+															if (member_search.role_id >= 1) {
+																inv_guild = "\nadd_button|invitetoguild|`2Invite to Guild``|noflags|0|0|";
+															}
+															break;
+														}
+													}
+												}
+											}
+											time_t s__;
+											s__ = time(NULL);
+											int days_ = int(s__) / (60 * 60 * 24);
+											double hours_ = (double)((s__ - pInfo(currentPeer)->playtime) + pInfo(currentPeer)->seconds) / 3600;
+											string num_text = to_string(hours_), status = "";
+											string rounded = num_text.substr(0, num_text.find(".") + 3);
+											string surgery = "\nadd_spacer|small|\nadd_button|start_surg|`$Perform Surgery``|noflags|0|0|\nadd_smalltext|Surgeon Skill: " + to_string(pInfo(peer)->surgery_skill) + "|left|";
+											for (int i_ = 0; i_ < pInfo(currentPeer)->playmods.size(); i_++) if (pInfo(currentPeer)->playmods[i_].id == 89) surgery = "\nadd_spacer|small|\nadd_textbox|Recovering from surgery...|left|";
+											if (pInfo(currentPeer)->hospital_bed == false) surgery = "";
+											gamepacket_t p;
+											p.Insert("OnDialogRequest");
+											p.Insert("embed_data|netID|" + to_string(pInfo(peer)->netID) + "\nset_default_color|`o\nadd_label_with_icon|big|" + (pInfo(currentPeer)->mod && pInfo(currentPeer)->d_name.empty() ? pInfo(currentPeer)->name_color : "`0") + "" + (pInfo(currentPeer)->d_name.empty() ? pInfo(currentPeer)->tankIDName : pInfo(currentPeer)->d_name) + "`` `0(```2" + (pInfo(currentPeer)->dev && pInfo(currentPeer)->d_name.empty() ? msg2 : to_string(pInfo(currentPeer)->level)) + "```0)``|left|18|" + (pInfo(currentPeer)->trader ? "\nadd_smalltext|This user is verified global trader|" : "") + surgery + "\nembed_data|netID|" + to_string(netID) + "\nadd_spacer|small|" + extra + (pInfo(currentPeer)->Show_OwnedWorlds ? "\nadd_label|small|`1Account Playtime:`` " + rounded + " hours|left" : "") + (pInfo(currentPeer)->Show_AccountCreated ? "\nadd_spacer|small|\nadd_label|small|`1Account Age:`` " + to_string(days_ - pInfo(currentPeer)->account_created) + " days|left" : "") + (pInfo(currentPeer)->Show_HomeWorld ? "\nadd_spacer|small|\nadd_label|small|`1Home World:``|left\nadd_button|visit_home_world_" + pInfo(currentPeer)->home_world + "|`$Visit " + pInfo(currentPeer)->home_world + "``|noflags|0|0|" : "") + "\nadd_spacer|small|" + (trade_blocked ? "\nadd_button||`4Trade Blocked``|disabled|||" : "\nadd_button|trade|`wTrade``|noflags|0|0|") + "\nadd_textbox|(No Battle Leash equipped)|left|\nadd_textbox|Your opponent needs a valid license to battle!|left|" + (world_->owner_name == pInfo(peer)->tankIDName or (guild_access(peer, world_->guild_id) or find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) != world_->admins.end()) or pInfo(peer)->dev + pInfo(peer)->mod > 0 ? "\nadd_button|kick|`4Kick``|noflags|0|0|\nadd_button|pull|`5Pull``|noflags|0|0|\nadd_button|worldban|`4World Ban``|noflags|0|0|" : "") + (pInfo(peer)->mod == 1 || pInfo(peer)->dev == 1 ? "\nadd_button|punish_view|`5Punish/View``|noflags|0|0|" : "") + inv_guild + (!already_friends ? "\nadd_button|friend_add|`wAdd as friend``|noflags|0|0|" : "") + (muted ? "\nadd_button|unmute_player|`wUnmute``|noflags|0|0|" : (already_friends ? "\nadd_button|mute_player|`wMute``|noflags|0|0|" : "")) + ""/*"\nadd_button|ignore_player|`wIgnore Player``|noflags|0|0|\nadd_button|report_player|`wReport Player``|noflags|0|0|"*/"\nadd_spacer|small|\nend_dialog|popup||Continue|\nadd_quick_exit|");
+											p.CreatePacket(peer);
+										}
+										break;
+									}
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|friends") != string::npos) {
+							send_social(peer);
+							break;
+						}
+						else if (cch.find("action|buy") != string::npos) {
+							vector<string> t_ = explode("|", cch);
+							if (t_.size() < 3) break;
+							string item = explode("\n", t_[2])[0];
+							int price = 0, free = get_free_slots(pInfo(peer)), slot = 1, getcount = 0, get_counted = 0, random_pack = 0, token = 0;
+							gamepacket_t p2;
+							p2.Insert("OnStorePurchaseResult");
+							if (item == "main") shop_tab(peer, "tab1");
+							else if (item == "locks") shop_tab(peer, "tab2");
+							else if (item == "itempack") shop_tab(peer, "tab3");
+							else if (item == "bigitems") shop_tab(peer, "tab4");
+							else if (item == "weather") shop_tab(peer, "tab5");
+							else if (item == "token") shop_tab(peer, "tab6");
+							else if (item == "upgrade_backpack") {
+								price = 100 * ((((pInfo(peer)->inv.size() - 17) / 10) * ((pInfo(peer)->inv.size() - 17) / 10)) + 1);
+								if (price > pInfo(peer)->gems) {
+									packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+									p2.Insert("You can't afford `0Upgrade Backpack`` (`w10 Slots``)!  You're `$" + setGems(price - pInfo(peer)->gems) + "`` Gems short.");
+								}
+								else {
+									if (pInfo(peer)->inv.size() < 246) {
+										{
+											gamepacket_t p;
+											p.Insert("OnConsoleMessage");
+											p.Insert("You've purchased `0Upgrade Backpack`` (`010 Slots``) for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems - price) + "`` Gems left.");
+											p.CreatePacket(peer);
+										}
+										p2.Insert("You've purchased `0Upgrade Backpack (10 Slots)`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems - price) + "`` Gems left.\n\n`5Received: ```0Backpack Upgrade``\n");
+										pInfo(peer)->gems -= price;
+										{
+											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+											gamepacket_t p;
+											p.Insert("OnSetBux");
+											p.Insert(pInfo(peer)->gems);
+											p.Insert(0);
+											p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) {
+												p.Insert((float)33796, (float)1, (float)0);
+											}
+											p.CreatePacket(peer);
+										}
+										for (int i_ = 0; i_ < 10; i_++) { // default inv dydis
+											Items itm_{};
+											itm_.id = 0, itm_.count = 0;
+											pInfo(peer)->inv.push_back(itm_);
+										}
+										send_inventory(peer);
+										update_clothes(peer);
+										shop_tab(peer, "tab2");
+									}
+								}
+								p2.CreatePacket(peer);
+							}
+							else {
+								vector<int> list;
+								vector<vector<int>> itemai;
+								string item_name = "";
+								ifstream ifs("database/shop/-" + item + ".json");
+								if (ifs.is_open()) {
+									json j;
+									ifs >> j;
+									price = j["g"].get<int>();
+									item_name = j["p"].get<string>();
+									if (j.find("itemai") != j.end()) { // mano sistema
+										if (pInfo(peer)->gems < price) {
+											packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+											p2.Insert("You can't afford `o" + item_name + "``!  You're `$" + setGems(price - pInfo(peer)->gems) + "`` Gems short."), p2.CreatePacket(peer);
+											break;
+										}
+										itemai = j["itemai"].get<vector<vector<int>>>();
+										int reik_slots = itemai.size();
+										int turi_slots = get_free_slots(pInfo(peer));
+										for (vector<int> item_info : itemai) {
+											int turi_dabar = 0;
+											modify_inventory(peer, item_info[0], turi_dabar);
+											if (turi_dabar != 0) reik_slots--;
+											if (turi_dabar + item_info[1] > 200) goto fail;
+										}
+										if (turi_slots < reik_slots) goto fail;
+										{
+											//if (item == "g4good_Gem_Charity") grow4good(peer, false, "donate_gems", 0);
+											//if (item != "arm_guy" and item != "g4good_Gem_Charity") grow4good(peer, false, "gems", price);
+											pInfo(peer)->gems -= price;
+											gamepacket_t gem_upd;
+											gem_upd.Insert("OnSetBux"), gem_upd.Insert(pInfo(peer)->gems), gem_upd.Insert(0), gem_upd.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+											if (pInfo(peer)->supp >= 2) {
+												gem_upd.Insert((float)33796, (float)1, (float)0);
+											}
+											gem_upd.CreatePacket(peer);
+											vector<string> received_items{}, received_items2{};
+											for (vector<int> item_info : itemai) {
+												uint32_t item_id = item_info[0];
+												int item_count = item_info[1];
+												modify_inventory(peer, item_id, item_count);
+												received_items.push_back("Got " + to_string(item_info[1]) + " `#" + items[item_id].ori_name + "``."), received_items2.push_back(to_string(item_info[1]) + " " + items[item_id].ori_name);
+											}
+											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+											//if (item == "arm_guy") grow4good(peer, false, "purchase_waving", 0);
+											gamepacket_t p_;
+											p_.Insert("OnConsoleMessage"), p_.Insert("You've purchased `o" + item_name + "`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems) + "`` Gems left." + "\n" + join(received_items, "\n")), p_.CreatePacket(peer);
+											p2.Insert("You've purchased `o" + item_name + "`` for `$" + setGems(price) + "`` Gems.\nYou have `$" + setGems(pInfo(peer)->gems) + "`` Gems left." + "\n\n`5Received: ``" + join(received_items2, ", ") + "\n"), p2.CreatePacket(peer);
+											break;
+										}
+									fail:
+										packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+										p2.Insert("You don't have enough space in your inventory to buy that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
+										p2.CreatePacket(peer);
+										break;
+									}
+									list = j["i"].get<vector<int>>();
+									getcount = j["h"].get<int>();
+									get_counted = j["h"].get<int>();
+									slot = j["c"].get<int>();
+									token = j["t"].get<int>();
+									random_pack = j["random"].get<int>();
+									int totaltoken = 0, tokencount = 0, mega_token = 0, inventoryfull = 0;
+									modify_inventory(peer, 1486, tokencount);
+									modify_inventory(peer, 6802, mega_token);
+									totaltoken = tokencount + (mega_token * 100);
+									vector<pair<int, int>> receivingitems;
+									if (token == 0 ? price > pInfo(peer)->gems : token > totaltoken) {
+										packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+										p2.Insert("You can't afford `o" + item_name + "``!  You're `$" + (token == 0 ? "" + setGems(price - pInfo(peer)->gems) + "`` Gems short." : "" + setGems(token - totaltoken) + "`` Growtokens short."));
+									}
+									else {
+										if (free >= slot) {
+											string received = "", received2 = "";
+											if (item == "basic_splice") {
+												slot++;
+												receivingitems.push_back(make_pair(11, 10));
+											}
+											if (item == "race_packa") {
+												slot++;
+												receivingitems.push_back(make_pair(11, 10));
+											}
+											for (int i = 0; i < slot; i++) receivingitems.push_back(make_pair((random_pack == 1 ? list[rand() % list.size()] : list[i]), getcount));
+											for (int i = 0; i < slot; i++) {
+												int itemcount = 0;
+												modify_inventory(peer, receivingitems[i].first, itemcount);
+												if (itemcount + getcount > 200) inventoryfull = 1;
+											}
+											if (inventoryfull == 0) {
+												int i = 0;
+												for (i = 0; i < slot; i++) {
+													received += (i != 0 ? ", " : "") + items[receivingitems[i].first].name;
+													received2 += "Got " + to_string(receivingitems[i].second) + " `#" + items[receivingitems[i].first].name + "``." + (i == (slot - 1) ? "" : "\n") + "";
+													modify_inventory(peer, receivingitems[i].first, receivingitems[i].second);
+												}
+											}
+											else {
+												packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+												p2.Insert("You don't have enough space in your inventory that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
+												p2.CreatePacket(peer);
+												break;
+											}
+											{
+												gamepacket_t p;
+												p.Insert("OnConsoleMessage");
+												p.Insert("You've purchased `o" + received + "`` for `$" + (token == 0 ? "" + setGems(price) + "`` Gems." : "" + setGems(token) + "`` Growtokens.") + "\nYou have `$" + (token == 0 ? "" + setGems(pInfo(peer)->gems - price) + "`` Gems left." : "" + setGems(totaltoken - token) + "`` Growtokens left.") + "\n" + received2);
+												p.CreatePacket(peer);
+											}
+											p2.Insert("You've purchased `o" + received + "`` for `$" + (token == 0 ? "" + setGems(price) + "`` Gems." : "" + setGems(token) + "`` Growtokens.") + "\nYou have `$" + (token == 0 ? "" + setGems(pInfo(peer)->gems - price) + "`` Gems left." : "" + setGems(totaltoken - token) + "`` Growtokens left.") + "\n\n`5Received: ``" + (get_counted <= 1 ? "" : "`0" + to_string(get_counted)) + "`` " + received + "\n"), p2.CreatePacket(peer);
+											if (token == 0) {
+												pInfo(peer)->gems -= price;
+												gamepacket_t p;
+												p.Insert("OnSetBux");
+												p.Insert(pInfo(peer)->gems);
+												p.Insert(0);
+												p.Insert((pInfo(peer)->supp >= 1) ? 1 : 0);
+												if (pInfo(peer)->supp >= 2) {
+													p.Insert((float)33796, (float)1, (float)0);
+												}
+												p.CreatePacket(peer);
+											}
+											else {
+												if (tokencount >= token) modify_inventory(peer, 1486, token *= -1);
+												else {
+													modify_inventory(peer, 1486, tokencount *= -1);
+													modify_inventory(peer, 6802, mega_token *= -1);
+													int givemegatoken = (totaltoken - token) / 100;
+													int givetoken = (totaltoken - token) - (givemegatoken * 100);
+													modify_inventory(peer, 1486, givetoken);
+													modify_inventory(peer, 6802, givemegatoken);
+												}
+											}
+											packet_(peer, "action|play_sfx\nfile|audio/piano_nice.wav\ndelayMS|0");
+										}
+										else {
+											packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+											p2.Insert(slot > 1 ? "You'll need " + to_string(slot) + " slots free to buy that! You have " + to_string(free) + " slots." : "You don't have enough space in your inventory that. You may be carrying to many of one of the items you are trying to purchase or you don't have enough free spaces to fit them all in your backpack!");
+										}
+									}
+								}
+								else {
+									packet_(peer, "action|play_sfx\nfile|audio/bleep_fail.wav\ndelayMS|0");
+									p2.Insert("This item was not found. Server error.");
+									p2.CreatePacket(peer);
+								}
+							}
+							break;
+						}
+						else if (cch.find("action|respawn") != string::npos) SendRespawn(peer, false, 0, (cch.find("action|respawn_spike") != string::npos) ? false : true);
 					}
 					else if (cch.find("action|dialog_return") != string::npos) {
 						call_dialog(peer, cch);
@@ -5829,34 +8447,70 @@ int main(int argc, char* argv[]) {
 					}
 					break;
 				}
-				case 3: // world/enter
+				case 3:
 				{
-					//auto start = chrono::steady_clock::now();
+					string str;
+					if (pInfo(peer)->isIn == false) break;
 					if (pInfo(peer)->trading_with != -1) {
 						cancel_trade(peer, false);
 						break;
 					}
+					if (Algorithm::get_str_from_packet(event.packet, str))
+					{
+						/*
+						if (parse(str) || scr.get().size() <= 0) {
+							string log = format("`4Warning: `w{}`` `9has been banned for sending invalid packets.````", pData::Algorithm::get_display_name(peer));
+							send_logs(log);
+							Algorithm::send_console(peer, "Your client sent invalid packets to the server.");
+							add_ban(peer, 2.592e+6, "Usage of third party programs", "System");
+						}
+						*/
+						if (pInfo(peer)->isIn) {
+							if (pInfo(peer)->lpps + 750 < (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())).count()) {
+								pInfo(peer)->pps = 0;
+								pInfo(peer)->lpps = (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())).count();
+							}
+							else {
+								pInfo(peer)->pps++;
+								if (pInfo(peer)->pps >= 25) {
+									string log = format("`4Warning: `w{}`` `9tried to spam packets. peer is now disconnected!````", pData::Algorithm::get_display_name(peer));
+									send_logs(log);
+									enet_peer_disconnect_later(event.peer, 0U);
+									break;
+								}
+							}
+						}
+					}
 					string cch = text_(event.packet);
-					if (pInfo(peer)->lpps2 + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
+					if (pInfo(peer)->lpps2 + 100 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 						pInfo(peer)->pps2 = 0;
 						pInfo(peer)->lpps2 = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
 					}
 					else {
 						pInfo(peer)->pps2++;
-						if (pInfo(peer)->pps2 >= 10) {
+						if (pInfo(peer)->pps2 >= 15) {
+							send_server_logs(pInfo(peer)->tankIDName, "Over Packet Limit in " + pInfo(peer)->world + " (FLAGGED AS: OVER_PACKET_LIMIT Code(3))");
 							hoshi_warn("Over packet 3 limit from " + pInfo(peer)->tankIDName + " in world " + pInfo(peer)->world + " packet was " + cch);
+							packet_(peer, "action|log\nmsg|`7Your client sending too many packets. attempt to reconnect");
+							if (not pInfo(peer)->tankIDName.empty()) {
+								save_player(pInfo(peer), false);
+							}
+							if (pInfo(peer)->trading_with != -1) {
+								cancel_trade(peer, false);
+							}
+							if (pInfo(peer)->world != "") exit_(peer, true);
 							enet_peer_disconnect_later(peer, 0);
 							break;
 						}
 					}
-					//cout << cch << endl;
-					if (cch == "action|quit") { // kai quit issaugo dar bus settings ar captcha bypassed disconnect
-						if (not pInfo(peer)->tankIDName.empty()) // jeigu yra growid
-							save_player(pInfo(peer)); // issaugoti zaidejo json
+					if (cch == "action|quit") {
+						if (not pInfo(peer)->tankIDName.empty()) {
+							save_player(pInfo(peer), false);
+						}
 						if (pInfo(peer)->trading_with != -1) {
 							cancel_trade(peer, false);
 						}
-						enet_peer_disconnect_later(peer, 0); // turetu nesuveikti tada antra karta save
+						enet_peer_disconnect_later(peer, 0);
 						delete peer->data;
 						peer->data = NULL;
 					}
@@ -5873,41 +8527,62 @@ int main(int argc, char* argv[]) {
 							join_world(peer, world_name);
 						}
 					}
-					//auto end = chrono::steady_clock::now();
-					//int uztruko = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-					//if (uztruko >= 500) {
-						//cout << "Lag case 3 warning: " << cch << " took " << uztruko << " ms\n";
-					//}
+					else if (cch == "action|gohomeworld\n" && pInfo(peer)->world == "") {
+						if (pInfo(peer)->home_world == "") {
+							gamepacket_t p, p2;
+							p.Insert("OnDialogRequest");
+							p.Insert("set_default_color|`o\nadd_label_with_icon|big|`9No Home World Set ``|left|1432|\nadd_spacer|small|\nadd_textbox|Use /sethome to assign the current world as your home world.|left|\nadd_spacer|small|\nend_dialog||OK||");
+							p.CreatePacket(peer);
+							p2.Insert("OnFailedToEnterWorld"), p2.CreatePacket(peer);
+						}
+						else {
+							packet_(peer, "action|log\nmsg|Magically warping to home world `5" + pInfo(peer)->home_world + "``...");
+							string world_name = pInfo(peer)->home_world;
+							join_world(peer, world_name);
+						}
+					}
 					break;
 				}
 				case 4:
 				{
-					string cch = text_(event.packet);
-					//auto start = chrono::steady_clock::now();
-					if (pInfo(peer)->lpps23 + 1000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
-						pInfo(peer)->pps23 = 0;
-						pInfo(peer)->lpps23 = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+					if (event.packet->dataLength < 56) {
+						string log = format("`4Warning: `w{}`` `9has been banned for client-manipulating packets.````", pData::Algorithm::get_display_name(peer));
+						send_logs(log);
+						add_ban(peer, 2.592e+6, "Usage of third party programs", "System");
+						break;
 					}
-					else {
-						pInfo(peer)->pps23++;
-						if (pInfo(peer)->pps23 >= 360) {
-							hoshi_warn("Over packet 4 limit from " + pInfo(peer)->tankIDName + " in world " + pInfo(peer)->world + " packet was " + cch);
-							packet_(peer, "action|log\nmsg|`7Your client sending too many packets, atempt to reconnect.");
-							enet_peer_disconnect_later(peer, 0);
-							break;
+					if (pInfo(peer)->isIn) {
+						if (pInfo(peer)->lpps + 750 < (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())).count()) {
+							pInfo(peer)->pps = 0;
+							pInfo(peer)->lpps = (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())).count();
+						}
+						else {
+							pInfo(peer)->pps++;
+							if (pInfo(peer)->pps >= 250) {
+								string log = format("`4Warning: `w{}`` `9is cheating. Please check him out.````", pData::Algorithm::get_display_name(peer));
+								send_logs(log);
+								break;
+							}
 						}
 					}
-					if (pInfo(peer)->world.empty()) break;
 					BYTE* data_ = get_struct(event.packet);
 					if (data_ == nullptr) break;
 					PlayerMoving* p_ = unpackPlayerMoving(data_);
 					switch (p_->packetType) {
-					case 0: /*Kai zaidejas pajuda*/
+					case 0: /* player state or player movement */
 					{
-						int currentX = pInfo(peer)->x / 32;
-						int currentY = pInfo(peer)->y / 32;
-						int targetX = p_->x / 32;
-						int targetY = p_->y / 32;
+						loop_cheat();
+						move_(peer, p_);
+						if (pInfo(peer)->x == -1 and pInfo(peer)->y == -1) {
+							if (!pInfo(peer)->isStateUpdated) {
+								update_clothes(peer);
+								pInfo(peer)->isStateUpdated = true;
+							}
+						}
+						pInfo(peer)->x = (int)p_->x + 5;
+						pInfo(peer)->y = (int)p_->y;
+						pInfo(peer)->characterState = p_->characterState;
+						pInfo(peer)->state = p_->characterState & 0x10;
 
 						if (pInfo(peer)->hand == 3066) {
 							if ((p_->punchX > 0 && p_->punchX < 100) && (p_->punchY > 0 && p_->punchY < 60) && p_->plantingTree == 0) edit_tile(peer, p_->punchX, p_->punchY, 18);
@@ -5920,7 +8595,7 @@ int main(int argc, char* argv[]) {
 							else {
 								if (pInfo(peer)->lavaeffect >= (pInfo(peer)->feet == 250 ? 7 : 3) || pInfo(peer)->lavaeffect >= (pInfo(peer)->necklace == 5426 ? 7 : 3)) {
 									pInfo(peer)->lavaeffect = 0;
-									SendRespawn(peer, false, 0, true);
+									respawn_player(peer, 0, true);
 								}
 								else pInfo(peer)->lavaeffect++;
 							}
@@ -5945,86 +8620,54 @@ int main(int argc, char* argv[]) {
 								WorldBlock* block_ = &world_->blocks[x_ + (y_ * 100)];
 								if (block_->fg == 1256) pInfo(peer)->hospital_bed = true;
 								else pInfo(peer)->hospital_bed = false;
+								// When player stand on tile
 								if (pInfo(peer)->c_x * 32 != (int)p_->x and pInfo(peer)->c_y * 32 != (int)p_->y and not pInfo(peer)->ghost) {
-									bool impossible = ar_turi_noclipaa(world_, pInfo(peer)->x, pInfo(peer)->y, block_, peer);
-									bool canGhost = false;
-									if (pInfo(peer)->dev || pInfo(peer)->mod || pInfo(peer)->superdev) canGhost = true;
-									if (impossible) {
-										if (items[block_->fg].actionType != 31) {
+									bool NoClip = patchNoClip(world_, pInfo(peer)->x, pInfo(peer)->y, block_, peer);
+									if (NoClip) {
+										if (items[block_->fg].actionType != 31 or items[block_->fg].actionType != 32 or items[block_->fg].actionType != 45) {
 											gamepacket_t p(0, pInfo(peer)->netID);
 											p.Insert("OnSetPos");
 											p.Insert(pInfo(peer)->x, pInfo(peer)->y);
 											p.CreatePacket(peer);
-											pInfo(peer)->hack_++;
-											if (pInfo(peer)->hack_ >= 4 and not canGhost) {
-												enet_peer_disconnect_later(peer, 0);
-												hoshi_warn("Detected Suspicious Activity (Trying to NoClip?) from " + pInfo(peer)->tankIDName);
-												//add_ban(peer, 6.307e+7, "Usage of Third Party Program", "System");
+											pInfo(peer)->flagged++;
+											pInfo(peer)->isFlagged = true;
+											if (pInfo(peer)->flagged >= 3) {
+												respawn_player(peer, 0, true);
 											}
 											break;
 										}
 									}
 								}
-								if (block_->fg == 1508 and not world_->name.empty()) {
-									char blarney_world = world_->name.back();
-									if (isdigit(blarney_world)) {
-										long long current_time = time(nullptr);
-										vector<vector<long long>> av_blarneys = pInfo(peer)->completed_blarneys;
-										for (int i_ = 0; i_ < av_blarneys.size(); i_++) {
-											int t_blarney_world = av_blarneys[i_][0];
-											if ((int)blarney_world - 48 == t_blarney_world) {
-												long long blarney_time = av_blarneys[i_][1];
-												if (blarney_time - current_time <= 0) {
-													av_blarneys[i_][1] = current_time + 86400;
-													vector<vector<int>> blarney_prizes{
-														//11712 11742 11710 11722
-														{11712, 1},{11742, 1},{11710, 1},{11722, 1}, {528, 1},{540, 1},{1514, 5},{1544, 1},{260, 1},{1546, 1},{2400, 1},{2404, 1},{2406, 1},{2414, 1},{2416, 1},{2464, 1},{3428, 1},{3426, 1},{4532, 1},{4528, 1},{4526, 5},{4520, 1},{5740, 1},{5734, 1},{7982, 1},{7992, 1},{7994, 1},{7980, 1},{7998, 1},{7984, 3},{7988, 1},{9416, 1},{9424, 1},{10704, 1},{10680, 1},{10670, 1},{10676, 1}
-													};
-													vector<int> prize_ = blarney_prizes[rand() % blarney_prizes.size()];
-													uint32_t give_id = prize_[0];
-													uint32_t give_count = prize_[1];
-													int c_ = give_count;
-													if (modify_inventory(peer, give_id, c_) != 0) {
-														WorldDrop drop_block_{};
-														drop_block_.id = give_id, drop_block_.count = give_count, drop_block_.uid = uint16_t(world_->drop.size()) + 1, drop_block_.x = pInfo(peer)->x + rand() % 17, drop_block_.y = pInfo(peer)->y + rand() % 17;
-														dropas_(world_, drop_block_);
-													}
-													int c_2 = 1;
-													if (modify_inventory(peer, 1510, c_2) != 0) {
-														WorldDrop drop_block_{};
-														drop_block_.id = 1510, drop_block_.count = c_2, drop_block_.uid = uint16_t(world_->drop.size()) + 1, drop_block_.x = pInfo(peer)->x + rand() % 17, drop_block_.y = pInfo(peer)->y + rand() % 17;
-														dropas_(world_, drop_block_);
-													}
-													pInfo(peer)->remind_time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
-													gamepacket_t p;
-													p.Insert("OnTalkBubble");
-													p.Insert(pInfo(peer)->netID);
-													p.Insert("You kissed the " + items[block_->fg].name + " and got a `2" + items[1510].name + "`` and `2" + items[give_id].name + "``");
-													p.Insert(1);
-													p.CreatePacket(peer);
-													{
-														gamepacket_t p;
-														p.Insert("OnConsoleMessage");
-														p.Insert("You kissed the " + items[block_->fg].name + " and got a `2" + items[1510].name + "`` and `2" + items[give_id].name + "``");
-														p.CreatePacket(peer);
-													}
-												}
-												else {
-													if (pInfo(peer)->remind_time + 8000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
-														pInfo(peer)->remind_time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
-														gamepacket_t p;
-														p.Insert("OnTalkBubble");
-														p.Insert(pInfo(peer)->netID);
-														p.Insert("You will be able to kiss the stone again in " + to_playmod_time(blarney_time - current_time) + "");
-														p.Insert(0);
-														p.CreatePacket(peer);
-													}
-												}
-												break;
-											}
+								if (block_->fg == 428 and not world_->name.empty() and not pInfo(peer)->OnRace) {
+									gamepacket_t p(0, pInfo(peer)->netID), p3(0, pInfo(peer)->netID);
+									p3.Insert("OnPlayPositioned");
+									p3.Insert("audio/race_start.wav");
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+											p3.CreatePacket(currentPeer);
 										}
-										pInfo(peer)->completed_blarneys = av_blarneys;
 									}
+									p.Insert("OnRaceStart"), p.CreatePacket(peer);
+									pInfo(peer)->OnRace = true;
+									pInfo(peer)->Race_Time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
+								}
+								if (block_->fg == 430 and pInfo(peer)->OnRace and not world_->name.empty()) {
+									int time = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count() - pInfo(peer)->Race_Time;
+									gamepacket_t p(0, pInfo(peer)->netID), p2, p3(0, pInfo(peer)->netID);
+									p2.Insert("OnConsoleMessage");
+									p2.Insert((not pInfo(peer)->d_name.empty() ? pInfo(peer)->d_name : (pInfo(peer)->d_name.empty() ? pInfo(peer)->name_color : "`0") + "" + (pInfo(peer)->d_name.empty() ? pInfo(peer)->tankIDName : pInfo(peer)->d_name)) + (pInfo(peer)->is_legend ? " of Legend" : "") + " `0finished in `$" + Algorithm::detailMSTime(time) + "`o!``");
+									p3.Insert("OnPlayPositioned");
+									p3.Insert("audio/race_end.wav");
+									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+										if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+											p2.CreatePacket(currentPeer), p3.CreatePacket(currentPeer);
+										}
+									}
+									p.Insert("OnRaceEnd"), p.Insert(time), p.CreatePacket(peer);
+									pInfo(peer)->OnRace = false;
+									pInfo(peer)->Race_Time = 0;
 								}
 								if (block_->fg == 1792 and not world_->name.empty()) {
 									string world_name = "LEGENDARYMOUNTAIN";
@@ -6037,6 +8680,13 @@ int main(int argc, char* argv[]) {
 										else {
 											int c = 1;
 											modify_inventory(peer, 1794, c);
+											gamepacket_t p;
+											p.Insert("OnTalkBubble");
+											p.Insert(pInfo(peer)->netID);
+											p.Insert("`9You have claimed a Legendary Orb!");
+											p.Insert(0), p.Insert(0);
+											p.CreatePacket(peer);
+
 											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
 												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
 												if (pInfo(currentPeer)->world == pInfo(peer)->world) {
@@ -6051,10 +8701,31 @@ int main(int argc, char* argv[]) {
 										}
 									}
 								}
-								//}
-								//catch (out_of_range) { // nuskrido uz worldo
-									//cout << "failed to perform anticheat check for player " << pInfo(peer)->tankIDName + " invalid world??" << endl;
-								//}
+								if (block_->fg == 3212 and not world_->name.empty()) {
+									string world_name = "GROWCH";
+									if (pInfo(peer)->world == world_name) {
+										int adaBrp = 0;
+										modify_inventory(peer, 3210, adaBrp);
+										if (adaBrp != 0) {
+											break;
+										}
+										else {
+											int c = 1;
+											modify_inventory(peer, 3210, c);
+											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+												if (pInfo(currentPeer)->world == pInfo(peer)->world) {
+													gamepacket_t p3;
+													p3.Insert("OnParticleEffect");
+													p3.Insert(46);
+													p3.Insert((float)pInfo(peer)->x + 10, (float)pInfo(peer)->y + 16);
+													p3.CreatePacket(currentPeer);
+												}
+											}
+											break;
+										}
+									}
+								}
 							}
 							if (pInfo(peer)->hand == 2286) {
 								if (rand() % 100 < 6) {
@@ -6095,182 +8766,36 @@ int main(int argc, char* argv[]) {
 									}
 								}
 							}
-							move_(peer, p_);
-							if (pInfo(peer)->x == -1 and pInfo(peer)->y == -1) {
-								update_clothes(peer);
-								uint32_t my_guild_role = -1;
-								uint32_t guild_id = pInfo(peer)->guild_id;
-								vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
-
-								if (pInfo(peer)->guild_id != 0) {
-									if (find_guild != guilds.end()) {
-										Guild* guild_information = &guilds[find_guild - guilds.begin()];
-										for (GuildMember member_search : guild_information->guild_members) {
-											if (member_search.member_name == pInfo(peer)->tankIDName) {
-												my_guild_role = member_search.role_id;
-												break;
-											}
-										}
-									}
-								}
-								gamepacket_t p3(0, pInfo(peer)->netID);
-								p3.Insert("OnSetRoleSkinsAndIcons");
-								p3.Insert(pInfo(peer)->roleSkin);
-								p3.Insert(pInfo(peer)->roleIcon);
-								p3.Insert(0);
-								for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-									if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-									if (pInfo(currentPeer)->world == world_->name) {
-										uint32_t guild_id = pInfo(peer)->guild_id;
-										vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
-										if (find_guild != guilds.end()) {
-											Guild* guild_information = &guilds[find_guild - guilds.begin()];
-											const auto flag1 = (65536 * guild_information->guild_mascot[1] + guild_information->guild_mascot[0]);
-											gamepacket_t p(0, pInfo(peer)->netID);
-											p.Insert("OnGuildDataChanged");
-											p.Insert(50478);
-											p.Insert(79289404);
-											p.Insert(flag1);
-											p.Insert(my_guild_role);
-											p.Insert(0);
-											/*gamepacket_t p(0, pInfo(peer)->netID);
-											p.Insert("OnGuildDataChanged");
-											p.Insert(50478);  //guild_information->guild_mascot[1]
-											p.Insert(79289404);
-											p.Insert(0), p.Insert(my_guild_role);*/
-
-											/*
-											gamepacket_t p2(0, pInfo(peer)->netID);
-											p2.Insert("OnCountryState");
-											p2.Insert(pInfo(peer)->country + "|showGuild");*/
-											p3.CreatePacket(currentPeer);
-											if (my_guild_role != -1) {
-												p.CreatePacket(currentPeer);
-												//p2.CreatePacket(currentPeer);
-											}
-										}
-										if (pInfo(currentPeer)->netID != pInfo(peer)->netID) {
-											if (pInfo(currentPeer)->roleSkin != 6 or pInfo(currentPeer)->roleIcon != 6) {
-												gamepacket_t p_p(0, pInfo(currentPeer)->netID);
-												p_p.Insert("OnSetRoleSkinsAndIcons");
-												p_p.Insert(pInfo(currentPeer)->roleSkin);
-												p_p.Insert(pInfo(currentPeer)->roleIcon);
-												p_p.Insert(0);
-												p_p.CreatePacket(peer);
-											}
-										}
-										if (pInfo(currentPeer)->netID != pInfo(peer)->netID and pInfo(currentPeer)->guild_id != 0) {
-											uint32_t guild_id = pInfo(currentPeer)->guild_id;
-											vector<Guild>::iterator find_guild = find_if(guilds.begin(), guilds.end(), [guild_id](const Guild& a) { return a.guild_id == guild_id; });
-											if (find_guild != guilds.end()) {
-												Guild* guild_information = &guilds[find_guild - guilds.begin()];
-												uint32_t my_role = 0;
-												const auto flag2 = (65536 * guild_information->guild_mascot[1] + guild_information->guild_mascot[0]);
-												for (GuildMember member_search : guild_information->guild_members) {
-													if (member_search.member_name == pInfo(currentPeer)->tankIDName) {
-														my_role = member_search.role_id;
-														break;
-													}
-												}
-												gamepacket_t p(0, pInfo(peer)->netID);
-												p.Insert("OnGuildDataChanged");
-												p.Insert(50478);
-												p.Insert(79289404);
-												p.Insert(flag2);
-												p.Insert(my_guild_role);
-												p.Insert(0);
-												p.CreatePacket(peer);
-											}
-										}
-									}
-								}
-								long long ms_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-								map<string, vector<WorldNPC>>::iterator it;
-								for (it = active_npc.begin(); it != active_npc.end(); it++) {
-									if (it->first == world_->name) {
-										for (int i_ = 0; i_ < it->second.size(); i_++) {
-											try {
-												WorldNPC npc_ = it->second[i_];
-												if (npc_.uid == -1) continue;
-												double per_sekunde_praeina_bloku = (double)npc_.projectile_speed / 32;
-												double praejo_laiko = (double)(ms_time - npc_.started_moving) / 1000;
-												double praejo_distancija = (double)per_sekunde_praeina_bloku * (double)praejo_laiko;
-												double current_x = ((int)npc_.kryptis == 180 ? (((double)npc_.x - (double)praejo_distancija) * 32) + 16 : (((double)npc_.x + (double)praejo_distancija) * 32) + 16);
-												double current_y = (double)npc_.y * 32;
-												bool blocked_ = false;
-												if ((int)npc_.kryptis == 180) { // check if it wasnt blocked
-													vector<int> new_tiles{};
-													if (items[world_->blocks[(int)(current_x / 32) + ((int)(current_y / 32) * 100)].fg].collisionType != 1) {
-														new_tiles.push_back((int)(current_x / 32) + ((int)(current_y / 32) * 100));
-													} int ySize = world_->blocks.size() / 100, xSize = world_->blocks.size() / ySize;
-													vector<WorldBlock> shadow_copy = world_->blocks;
-													for (int i2 = 0; i2 < new_tiles.size(); i2++) {
-														int x_ = new_tiles[i2] % 100, y_ = new_tiles[i2] / 100;
-														if (x_ < 99 and items[shadow_copy[x_ + 1 + (y_ * 100)].fg].collisionType != 1) {
-															if (not shadow_copy[x_ + 1 + (y_ * 100)].scanned) {
-																shadow_copy[x_ + 1 + (y_ * 100)].scanned = true;
-																new_tiles.push_back(x_ + 1 + (y_ * 100));
-															}
-														}
-														else if (items[shadow_copy[x_ + 1 + (y_ * 100)].fg].collisionType == 1 and x_ < npc_.x) {
-															blocked_ = true;
-															break;
-														}
-													}
-												}
-												else {
-													vector<int> new_tiles{};
-													if (items[world_->blocks[(int)(current_x / 32) + ((int)(current_y / 32) * 100)].fg].collisionType != 1) {
-														new_tiles.push_back((int)(current_x / 32) + ((int)(current_y / 32) * 100));
-													} int ySize = world_->blocks.size() / 100, xSize = world_->blocks.size() / ySize;
-													vector<WorldBlock> shadow_copy = world_->blocks;
-													for (int i2 = 0; i2 < new_tiles.size(); i2++) {
-														int x_ = new_tiles[i2] % 100, y_ = new_tiles[i2] / 100;
-														if (x_ < 99 and items[shadow_copy[x_ - 1 + (y_ * 100)].fg].collisionType != 1) {
-															if (not shadow_copy[x_ - 1 + (y_ * 100)].scanned) {
-																shadow_copy[x_ - 1 + (y_ * 100)].scanned = true;
-																new_tiles.push_back(x_ - 1 + (y_ * 100));
-															}
-														}
-														else if (items[shadow_copy[x_ - 1 + (y_ * 100)].fg].collisionType == 1 and x_ > npc_.x) {
-															blocked_ = true;
-															break;
-														}
-													}
-												} if (blocked_) {
-													continue;
-												}
-												PlayerMoving data_{};
-												data_.packetType = 34;
-												data_.x = (current_x + 16); //nuo x
-												data_.y = (current_y + (npc_.id == 8020 ? 6 : 16)); //nuo y
-												data_.XSpeed = (current_x + 16); // iki x
-												data_.YSpeed = (current_y + (npc_.id == 8020 ? 6 : 16)); // iki y
-												data_.punchY = npc_.projectile_speed;
-												BYTE* raw = packPlayerMoving(&data_);
-												raw[1] = (npc_.id == 8020 ? 15 : 8), raw[2] = npc_.uid, raw[3] = 2;
-												memcpy(raw + 40, &npc_.kryptis, 4);
-												send_raw(peer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-												delete[] raw;
-											}
-											catch (out_of_range) {
-												continue;
-											}
-										}
-										break;
-									}
-								}
-							}
-
-							pInfo(peer)->x = (int)p_->x, pInfo(peer)->y = (int)p_->y, pInfo(peer)->state = p_->characterState & 0x10;
 						}
 						break;
 					}
-					case 3: /* tempat player wrench atau hit block */
+					case 3: /* tempat player wrench atau place tile atau hit tile */
 					{
+						if (p_->punchX < 0 || p_->punchY < 0) break;
+						if (p_->punchX > 100 || p_->punchY > 60) break;
 						if (p_->plantingTree <= 0 || p_->plantingTree >= items.size()) break;
-						//if (items[p_->plantingTree].blocked_place == 1) break; // crash block
-						if (p_->plantingTree != 18 and p_->plantingTree != 32) {
+						if ((pInfo(peer)->dev + pInfo(peer)->superdev == 0) && (abs(p_->x / 32 - p_->punchX) > (pInfo(peer)->hand == 11094 ? 6 : 4) || abs(p_->y / 32 - p_->punchY) > (pInfo(peer)->hand == 11094 ? 6 : 4))) break;
+						if (pInfo(peer)->Cheat_AF and has_playmod(pInfo(peer), "Cheat Active: Auto Farm") and pInfo(peer)->Cheat_AF_isRunning) {
+							gamepacket_t p;
+							p.Insert("OnTalkBubble");
+							p.Insert(pInfo(peer)->netID);
+							p.Insert("You can't do that while auto-farming");
+							p.Insert(0), p.Insert(0);
+							p.CreatePacket(peer);
+							break;
+						}
+						if (p_->plantingTree != 18 and p_->plantingTree != 32 and items[p_->plantingTree].blockType != BlockTypes::CLOTHING) {
+							if (pInfo(peer)->Cheat_AF_PlantingTree == 0 and pInfo(peer)->Cheat_AF) {
+								if (p_->plantingTree == 5640) pInfo(peer)->isRemote = true;
+								pInfo(peer)->Cheat_AF_PunchX = p_->punchX;
+								pInfo(peer)->Cheat_AF_PunchY = p_->punchY;
+								pInfo(peer)->Cheat_AF_PlantingTree = p_->plantingTree;
+								pInfo(peer)->Cheat_AF_isRunning = true;
+								pInfo(peer)->Cheat_AF_Since = Algorithm::get_epoch_seconds();
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) pInfo(peer)->isFacingLeft = true;
+								}
+							}
 							int c_ = 0;
 							modify_inventory(peer, p_->plantingTree, c_);
 							if (c_ == 0) break;
@@ -6357,7 +8882,7 @@ int main(int argc, char* argv[]) {
 								}
 							}
 						}
-						else if (p_->plantingTree == 18 and has_playmod(pInfo(peer), "legendary fist")) {
+						else if (p_->plantingTree == 18 and pInfo(peer)->hand == 8430) {
 							string name_ = pInfo(peer)->world;
 							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
 							if (p != worlds.end()) {
@@ -6370,11 +8895,25 @@ int main(int argc, char* argv[]) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 7, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 8, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 9, p_->punchY, p_->plantingTree);
 								}
 								else {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 7, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 8, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 9, p_->punchY, p_->plantingTree);
 								}
 							}
 							else if (p_->punchX == pInfo(peer)->x / 32) {
@@ -6382,11 +8921,25 @@ int main(int argc, char* argv[]) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 9, p_->plantingTree);
 								}
 								else if (p_->punchY < pInfo(peer)->y / 32) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 9, p_->plantingTree);
 								}
 								else {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
@@ -6397,11 +8950,25 @@ int main(int argc, char* argv[]) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 7, p_->punchY - 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 8, p_->punchY - 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 9, p_->punchY - 9, p_->plantingTree);
 								}
 								else {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 7, p_->punchY - 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 8, p_->punchY - 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 9, p_->punchY - 9, p_->plantingTree);
 								}
 							}
 							else if (p_->punchY < pInfo(peer)->y / 32) {
@@ -6409,11 +8976,25 @@ int main(int argc, char* argv[]) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 7, p_->punchY - 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 8, p_->punchY - 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 9, p_->punchY - 9, p_->plantingTree);
 								}
 								else {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 7, p_->punchY - 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 8, p_->punchY - 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 9, p_->punchY - 9, p_->plantingTree);
 								}
 							}
 							else if (p_->punchY > pInfo(peer)->y / 32) {
@@ -6421,11 +9002,311 @@ int main(int argc, char* argv[]) {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY + 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 7, p_->punchY + 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 8, p_->punchY + 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 9, p_->punchY + 9, p_->plantingTree);
 								}
 								else {
 									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
 									edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY + 6, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 7, p_->punchY + 7, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 8, p_->punchY + 8, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 9, p_->punchY + 9, p_->plantingTree);
+								}
+							}
+						}
+						else if (p_->plantingTree == 18 and pInfo(peer)->hand == 9158) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (p != worlds.end()) {
+								World* world_ = &worlds[p - worlds.begin()];
+								WorldBlock* block_ = &world_->blocks[p_->punchX + (p_->punchY * 100)];
+								if (block_->fg == 0 and block_->bg == 0) break;
+							}
+							if (p_->punchY == pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchX == pInfo(peer)->x / 32) {
+								if (p_->punchY > pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 6, p_->plantingTree);
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 6, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY > pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 5, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 6, p_->punchY + 6, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 5, p_->punchY + 5, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 6, p_->punchY + 6, p_->plantingTree);
+								}
+							}
+						}
+						else if (p_->plantingTree == 18 and pInfo(peer)->hand == 9156) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (p != worlds.end()) {
+								World* world_ = &worlds[p - worlds.begin()];
+								WorldBlock* block_ = &world_->blocks[p_->punchX + (p_->punchY * 100)];
+								if (block_->fg == 0 and block_->bg == 0) break;
+							}
+							if (p_->punchY == pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchX == pInfo(peer)->x / 32) {
+								if (p_->punchY > pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY > pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+								}
+							}
+						}
+						else if (p_->plantingTree == 18 and pInfo(peer)->hand == 5196 or pInfo(peer)->hand == 7962) {
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (p != worlds.end()) {
+								World* world_ = &worlds[p - worlds.begin()];
+								WorldBlock* block_ = &world_->blocks[p_->punchX + (p_->punchY * 100)];
+								if (block_->fg == 0 and block_->bg == 0) break;
+							}
+							if (p_->punchY == pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchX == pInfo(peer)->x / 32) {
+								if (p_->punchY > pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY < pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+								}
+							}
+							else if (p_->punchY > pInfo(peer)->y / 32) {
+								if (pInfo(peer)->state == 16) {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+								}
+								else {
+									edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+									edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
 								}
 							}
 						}
@@ -6444,7 +9325,1257 @@ int main(int argc, char* argv[]) {
 												if (itemas->magnetron and itemas->id == pInfo(peer)->magnetron_id) {
 													if (itemas->pr > 0) {
 														p_->plantingTree = itemas->id;
-														if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) {
+														if (pInfo(peer)->hand == 5196) {
+															string name_ = pInfo(peer)->world;
+															vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+															if (p_->punchY == pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchX == pInfo(peer)->x / 32) {
+																if (p_->punchY > pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else if (p_->punchY < pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY > pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+														}
+														else if (pInfo(peer)->hand == 7962) {
+															string name_ = pInfo(peer)->world;
+															vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+															if (p_->punchY == pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchX == pInfo(peer)->x / 32) {
+																if (p_->punchY > pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else if (p_->punchY < pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY > pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+														}
+														else if (pInfo(peer)->hand == 9156) {
+															string name_ = pInfo(peer)->world;
+															vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+															if (p_->punchY == pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchX == pInfo(peer)->x / 32) {
+																if (p_->punchY > pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else if (p_->punchY < pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY > pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+														}
+														else if (pInfo(peer)->hand == 9158) {
+															string name_ = pInfo(peer)->world;
+															vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+															if (p_->punchY == pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 5, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 6, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 5, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 6, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchX == pInfo(peer)->x / 32) {
+																if (p_->punchY > pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else if (p_->punchY < pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 5, p_->punchY - 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 6, p_->punchY - 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 5, p_->punchY - 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 6, p_->punchY - 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 5, p_->punchY - 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 6, p_->punchY - 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY - 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY - 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 5, p_->punchY - 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 6, p_->punchY - 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY > pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 5, p_->punchY + 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 6, p_->punchY + 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 3, p_->punchY + 3, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 4, p_->punchY + 4, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 5, p_->punchY + 5, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 6, p_->punchY + 6, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+														}
+														else if (pInfo(peer)->hand == 9160) {
+															string name_ = pInfo(peer)->world;
+															vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+															if (p_->punchY == pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchX == pInfo(peer)->x / 32) {
+																if (p_->punchY > pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else if (p_->punchY < pInfo(peer)->y / 32) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY < pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY - 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY - 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+															else if (p_->punchY > pInfo(peer)->y / 32) {
+																if (pInfo(peer)->state == 16) {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX - 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+																else {
+																	if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 1, p_->punchY + 1, itemas->id, true)) itemas->pr--;
+																	if (edit_tile(peer, p_->punchX + 2, p_->punchY + 2, itemas->id, true)) itemas->pr--;
+																	if (itemas->pr <= 0) {
+																		PlayerMoving data_{};
+																		data_.packetType = 5, data_.punchX = machine.x, data_.punchY = machine.y, data_.characterState = 0x8;
+																		BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, itemas));
+																		BYTE* blc = raw + 56;
+																		form_visual(blc, *itemas, *world_, NULL, false);
+																		for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																			if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																			if (pInfo(currentPeer)->world == world_->name) {
+																				send_raw(currentPeer, 4, raw, 112 + alloc_(world_, itemas), ENET_PACKET_FLAG_RELIABLE);
+																			}
+																		}
+																		delete[] raw, blc;
+																	}
+																	break;
+																}
+															}
+														}
+														else if (edit_tile(peer, p_->punchX, p_->punchY, itemas->id, true)) {
 															itemas->pr--;
 															if (itemas->pr <= 0) {
 																PlayerMoving data_{};
@@ -6487,284 +10618,850 @@ int main(int argc, char* argv[]) {
 								}
 								break;
 							}
-							edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+							int adaBrp = 0;
+							modify_inventory(peer, p_->plantingTree, adaBrp);
+							if (pInfo(peer)->hand == 5196 and adaBrp >= 5) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+									}
+								}
+							}
+							else if (pInfo(peer)->hand == 7962 and adaBrp >= 5) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+									}
+								}
+							}
+							else if (pInfo(peer)->hand == 9160 and adaBrp >= 3) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+									}
+								}
+							}
+							else if (pInfo(peer)->hand == 9156 and adaBrp >= 4) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+									}
+								}
+							}
+							else if (pInfo(peer)->hand == 9158 and adaBrp >= 7) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 6, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 6, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY + 6, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY + 6, p_->plantingTree);
+									}
+								}
+							}
+							else if (pInfo(peer)->hand == 8430 and adaBrp >= 10) {
+								string name_ = pInfo(peer)->world;
+								vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+								if (p_->punchY == pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 7, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 8, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 9, p_->punchY, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 7, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 8, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 9, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchX == pInfo(peer)->x / 32) {
+									if (p_->punchY > pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY + 9, p_->plantingTree);
+									}
+									else if (p_->punchY < pInfo(peer)->y / 32) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX, p_->punchY - 9, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 7, p_->punchY - 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 8, p_->punchY - 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 9, p_->punchY - 9, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 7, p_->punchY - 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 8, p_->punchY - 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 9, p_->punchY - 9, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY < pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY - 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 7, p_->punchY - 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 8, p_->punchY - 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 9, p_->punchY - 9, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY - 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY - 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY - 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY - 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY - 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY - 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 7, p_->punchY - 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 8, p_->punchY - 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 9, p_->punchY - 9, p_->plantingTree);
+									}
+								}
+								else if (p_->punchY > pInfo(peer)->y / 32) {
+									if (pInfo(peer)->state == 16) {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 4, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 5, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 6, p_->punchY + 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 7, p_->punchY + 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 8, p_->punchY + 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX - 9, p_->punchY + 9, p_->plantingTree);
+									}
+									else {
+										edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 1, p_->punchY + 1, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 2, p_->punchY + 2, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 3, p_->punchY + 3, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 4, p_->punchY + 4, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 5, p_->punchY + 5, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 6, p_->punchY + 6, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 7, p_->punchY + 7, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 8, p_->punchY + 8, p_->plantingTree);
+										edit_tile(peer, p_->punchX + 9, p_->punchY + 9, p_->plantingTree);
+									}
+								}
+							}
+							else edit_tile(peer, p_->punchX, p_->punchY, p_->plantingTree);
 						}
 						break;
 					}
-					case 7: /*Kai zaidejas ieina pro duris arba portal*/ /*2/16/2023 update: cia dar gali buti STEAM USE*/
+					case 7: /* tile activate request */
 					{
-						string name_ = pInfo(peer)->world;
-						vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
-						if (p != worlds.end()) {
-							World* world_ = &worlds[p - worlds.begin()];
-							//try {
-							if (p_->punchX < 0 or p_->punchX >= 100 or p_->punchY < 0 or p_->punchY >= 60) return false;
-							WorldBlock* block_ = &world_->blocks[p_->punchX + (p_->punchY * 100)];
-							bool impossible = ar_turi_noclipaa(world_, pInfo(peer)->x, pInfo(peer)->y, block_, peer);
-							if (impossible) break;
-							if (items[items[block_->fg ? block_->fg : block_->bg].id].blockType == BlockTypes::CHECKPOINT) {
-								pInfo(peer)->c_x = p_->punchX, pInfo(peer)->c_y = p_->punchY;
-								gamepacket_t p(0, pInfo(peer)->netID);
-								p.Insert("SetRespawnPos");
-								p.Insert(pInfo(peer)->c_x + (pInfo(peer)->c_y * 100));
-								p.CreatePacket(peer);
-							}
-							else if (items[block_->fg ? block_->fg : block_->bg].id == 6) exit_(peer);
-							else if (block_->fg == 4722 && pInfo(peer)->adventure_begins == false) {
-								pInfo(peer)->adventure_begins = true;
-								gamepacket_t p(0);
-								p.Insert("OnAddNotification"), p.Insert("interface/large/adventure.rttex"), p.Insert(block_->heart_monitor), p.Insert("audio/gong.wav"), p.Insert(0), p.CreatePacket(peer);
-							}
-							else if (items[block_->fg].blockType == BlockTypes::DOOR or items[block_->fg].blockType == BlockTypes::PORTAL) {
-								string door_target = block_->door_destination, door_id = "";
-								World target_world = worlds[p - worlds.begin()];
-								bool locked = (block_->open ? false : (target_world.owner_name == pInfo(peer)->tankIDName or pInfo(peer)->dev or target_world.open_to_public or target_world.owner_name.empty() or (guild_access(peer, target_world.guild_id) or find(target_world.admins.begin(), target_world.admins.end(), pInfo(peer)->tankIDName) != target_world.admins.end()) ? false : true));
-								int spawn_x = 0, spawn_y = 0;
-								if (not locked && block_->fg != 762) {
-									if (door_target.find(":") != string::npos) {
-										vector<string> detales = explode(":", door_target);
-										door_target = detales[0], door_id = detales[1];
-									} if (not door_target.empty() and door_target != world_->name) {
-										if (not check_name(door_target)) {
-											gamepacket_t p(250, pInfo(peer)->netID);
-											p.Insert("OnSetFreezeState");
-											p.Insert(1);
-											p.CreatePacket(peer);
-											{
-												gamepacket_t p(250);
-												p.Insert("OnConsoleMessage");
-												p.Insert(door_target);
-												p.CreatePacket(peer);
-											}
-											{
-												gamepacket_t p(250);
-												p.Insert("OnZoomCamera");
-												p.Insert((float)10000.000000);
-												p.Insert(1000);
-												p.CreatePacket(peer);
-											}
-											{
+						try {
+							if (p_->punchX < 0 or p_->punchX > 100 or p_->punchY < 0 or p_->punchY >= 60) break;
+							string name_ = pInfo(peer)->world;
+							vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
+							if (p != worlds.end()) {
+								World* world_ = &worlds[p - worlds.begin()];
+								//try {
+								WorldBlock* block_ = &world_->blocks[p_->punchX + (p_->punchY * 100)];
+								bool how = patchNoClip(world_, pInfo(peer)->x, pInfo(peer)->y, block_, peer);
+								if (how) break;
+								if (items[items[block_->fg ? block_->fg : block_->bg].id].blockType == BlockTypes::CHECKPOINT) {
+									pInfo(peer)->c_x = p_->punchX, pInfo(peer)->c_y = p_->punchY;
+									gamepacket_t p(0, pInfo(peer)->netID);
+									p.Insert("SetRespawnPos");
+									p.Insert(pInfo(peer)->c_x + (pInfo(peer)->c_y * 100));
+									p.CreatePacket(peer);
+								}
+								else if (items[block_->fg ? block_->fg : block_->bg].id == 6) exit_(peer);
+								else if (block_->fg == 4722 && pInfo(peer)->adventure_begins == false) {
+									pInfo(peer)->adventure_begins = true;
+									gamepacket_t p(0);
+									p.Insert("OnAddNotification"), p.Insert("interface/large/adventure.rttex"), p.Insert(block_->heart_monitor), p.Insert("audio/gong.wav"), p.Insert(0), p.CreatePacket(peer);
+								}
+								else if (items[block_->fg].blockType == BlockTypes::DOOR or items[block_->fg].blockType == BlockTypes::PORTAL) {
+									string door_target = block_->door_destination, door_id = "";
+									World target_world = worlds[p - worlds.begin()];
+									bool locked = (block_->open ? false : (target_world.owner_name == pInfo(peer)->tankIDName or pInfo(peer)->dev or target_world.open_to_public or target_world.owner_name.empty() or (guild_access(peer, target_world.guild_id) or find(target_world.admins.begin(), target_world.admins.end(), pInfo(peer)->tankIDName) != target_world.admins.end()) ? false : true));
+									int spawn_x = 0, spawn_y = 0;
+									if (not locked && block_->fg != 762) {
+										if (door_target.find(":") != string::npos) {
+											vector<string> detales = explode(":", door_target);
+											door_target = detales[0], door_id = detales[1];
+										} if (not door_target.empty() and door_target != world_->name) {
+											if (not check_name(door_target)) {
 												gamepacket_t p(250, pInfo(peer)->netID);
 												p.Insert("OnSetFreezeState");
-												p.Insert(0);
+												p.Insert(1);
 												p.CreatePacket(peer);
-											}
-											break;
-										}
-										target_world = get_world(door_target);
-									}
-									int ySize = (int)target_world.blocks.size() / 100, xSize = (int)target_world.blocks.size() / ySize, square = (int)target_world.blocks.size();
-									if (not door_id.empty()) {
-										for (int i_ = 0; i_ < target_world.blocks.size(); i_++) {
-											WorldBlock block_data = target_world.blocks[i_];
-											if (block_data.fg == 1684 or items[block_data.fg].blockType == BlockTypes::DOOR or items[block_data.fg].blockType == BlockTypes::PORTAL) {
-												if (block_data.door_id == door_id) {
-													spawn_x = i_ % xSize, spawn_y = i_ / xSize;
-													break;
+												{
+													gamepacket_t p(250);
+													p.Insert("OnConsoleMessage");
+													p.Insert(door_target);
+													p.CreatePacket(peer);
 												}
-											}
-										}
-									}
-								}
-								if (block_->fg == 762) {
-									pInfo(peer)->lastwrenchx = p_->punchX, pInfo(peer)->lastwrenchy = p_->punchY;
-									gamepacket_t p2;
-									if (block_->door_id == "") p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("No password has been set yet!"), p2.Insert(0), p2.Insert(1);
-									else p2.Insert("OnDialogRequest"), p2.Insert("set_default_color|`o\nadd_label_with_icon|big|`wPassword Door``|left|762|\nadd_textbox|The door requires a password.|left|\nadd_text_input|password|Password||24|\nend_dialog|password_reply|Cancel|OK|");
-									p2.CreatePacket(peer);
-									gamepacket_t p(250, pInfo(peer)->netID), p3(250), p4(250, pInfo(peer)->netID);
-									p.Insert("OnSetFreezeState"), p.Insert(1), p.CreatePacket(peer);
-									p3.Insert("OnZoomCamera"), p3.Insert((float)10000.000000), p3.Insert(1000), p3.CreatePacket(peer);
-									p4.Insert("OnSetFreezeState"), p4.Insert(0), p4.CreatePacket(peer);
-								}
-								if (block_->fg != 762) join_world(peer, target_world.name, spawn_x, spawn_y, 250, locked, true);
-							}
-							else {
-								switch (block_->fg) {
-								case 3270: case 3496:
-								{
-									Position2D steam_connector = track_steam(world_, block_, p_->punchX, p_->punchY);
-									if (steam_connector.x != -1 and steam_connector.y != -1) {
-										WorldBlock* block_s = &world_->blocks[steam_connector.x + (steam_connector.y * 100)];
-										switch (block_s->fg) {
-										case 3286: //steam door
-										{
-											block_s->flags = (block_s->flags & 0x00400000 ? block_s->flags ^ 0x00400000 : block_s->flags | 0x00400000);
-											PlayerMoving data_{};
-											data_.packetType = 5, data_.punchX = steam_connector.x, data_.punchY = steam_connector.y, data_.characterState = 0x8;
-											BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_s));
-											BYTE* blc = raw + 56;
-											form_visual(blc, *block_s, *world_, peer, false);
-											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-												if (pInfo(currentPeer)->world == world_->name) {
-													send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_s), ENET_PACKET_FLAG_RELIABLE);
+												{
+													gamepacket_t p(250);
+													p.Insert("OnZoomCamera");
+													p.Insert((float)10000.000000);
+													p.Insert(1000);
+													p.CreatePacket(peer);
 												}
+												{
+													gamepacket_t p(250, pInfo(peer)->netID);
+													p.Insert("OnSetFreezeState");
+													p.Insert(0);
+													p.CreatePacket(peer);
+												}
+												break;
 											}
-											delete[] raw, blc;
-											break;
+											target_world = get_world(door_target);
 										}
-										case 3724: // spirit storage unit
-										{
-											uint32_t scenario = 20;
-											{
-												// check for ghost jars
-												for (int i = 0; i < world_->drop.size(); i++) {
-													WorldDrop* check_drop = &world_->drop[i];
-													Position2D dropped_at{ check_drop->x / 32, check_drop->y / 32 };
-													if (dropped_at.x == steam_connector.x and dropped_at.y == steam_connector.y) {
-														if (check_drop->id == 3722) {
-															uint32_t explo_chance = check_drop->count;
-															// remove drop
-															{
-																PlayerMoving data_{};
-																data_.packetType = 14, data_.netID = -2, data_.plantingTree = check_drop->uid;
-																BYTE* raw = packPlayerMoving(&data_);
-																int32_t item = -1;
-																memcpy(raw + 8, &item, 4);
-																for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-																	if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-																	if (pInfo(currentPeer)->world == name_) {
-																		send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-																	}
-																}
-																world_->drop[i].id = 0, world_->drop[i].x = -1, world_->drop[i].y = -1;
-																delete[] raw;
-															}
-															block_s->c_ += explo_chance;
-															// explode or not
-															{
-																if (block_s->c_ * 5 >= 105) {
-																	float explosion_chance = (float)((block_s->c_ * 5) - 100) * 0.5;
-																	if (explosion_chance > rand() % 100) {
-																		//bam bam
-																		block_s->fg = 3726;
-																		// drop the prize
-																		{
-																			vector<int> all_p{ 3734, 3732, 3748, 3712, 3706, 3708, 3718, 11136, 3728, 10056, 3730, 3788, 3750, 3738, 6060, 3738, 6840, 3736, 3750 };
-																			uint32_t prize = 0;
-																			if (block_s->c_ * 5 <= 115) prize = 3734;
-																			else if (block_s->c_ * 5 <= 130) prize = 3732;
-																			else if (block_s->c_ * 5 <= 140) prize = 3748;
-																			else if (block_s->c_ * 5 <= 170) {
-																				vector<int> p_drops = {
-																					3712, 3706, 3708, 3718, 11136
-																				};
-																				prize = p_drops[rand() % p_drops.size()];
-																			}
-																			else if (block_s->c_ * 5 <= 190)  prize = 3728;
-																			else if (block_s->c_ * 5 <= 205)  prize = 10056;
-																			else if (block_s->c_ * 5 <= 220)  prize = 3730;
-																			else if (block_s->c_ * 5 == 225)  prize = 3788;
-																			else if (block_s->c_ * 5 <= 240)  prize = 3750;
-																			else if (block_s->c_ * 5 == 245)  prize = 3738;
-																			else if (block_s->c_ * 5 <= 255)  prize = 6060;
-																			else if (block_s->c_ * 5 <= 265 or explo_chance * 5 >= 265) {
-																				if (explo_chance * 5 >= 265) prize = all_p[rand() % all_p.size()];
-																				else prize = 3738;
-																			}
-																			else {
-																				vector<int> p_drops = {
-																					6840
-																				};
-																				if (block_s->c_ * 5 >= 270) p_drops.push_back(3736);
-																				if (block_s->c_ * 5 >= 295) p_drops.push_back(3750);
-																				prize = p_drops[rand() % p_drops.size()];
-																			} if (prize != 0) {
-																				WorldDrop drop_block_{};
-																				drop_block_.x = steam_connector.x * 32 + rand() % 17;
-																				drop_block_.y = steam_connector.y * 32 + rand() % 17;
-																				drop_block_.id = prize, drop_block_.count = 1, drop_block_.uid = uint16_t(world_->drop.size()) + 1;
-																				dropas_(world_, drop_block_);
-																				{
-																					PlayerMoving data_{};
-																					data_.packetType = 0x11, data_.x = steam_connector.x * 32 + 16, data_.y = steam_connector.y * 32 + 16;
-																					data_.YSpeed = 97, data_.XSpeed = 3724;
-																					BYTE* raw = packPlayerMoving(&data_);
-																					PlayerMoving data_2{};
-																					data_2.packetType = 0x11, data_2.x = steam_connector.x * 32 + 16, data_2.y = steam_connector.y * 32 + 16;
-																					data_2.YSpeed = 108;
-																					BYTE* raw2 = packPlayerMoving(&data_2);
-																					gamepacket_t p;
-																					p.Insert("OnConsoleMessage");
-																					p.Insert("`#[A `9Spirit Storage Unit`` exploded, bringing forth an `9" + items[prize].name + "`` from The Other Side!]``");
-																					for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-																						if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-																						if (pInfo(currentPeer)->world == world_->name) {
-																							p.CreatePacket(currentPeer);
-																							send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-																							send_raw(currentPeer, 4, raw2, 56, ENET_PACKET_FLAG_RELIABLE);
-																						}
-																					}
-																					delete[] raw, raw2;
-																				}
-																				scenario = 22;
-																			}
-																		}
-																		block_s->c_ = 0;
-																	}
-																}
-															}
-															// update visuals
-															{
-																PlayerMoving data_{};
-																data_.packetType = 5, data_.punchX = steam_connector.x, data_.punchY = steam_connector.y, data_.characterState = 0x8;
-																BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_s));
-																BYTE* blc = raw + 56;
-																form_visual(blc, *block_s, *world_, peer, false);
-																for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-																	if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-																	if (pInfo(currentPeer)->world == world_->name) {
-																		send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_s), ENET_PACKET_FLAG_RELIABLE);
-																	}
-																}
-																delete[] raw, blc;
-															}
-															break;
-														}
+										int ySize = (int)target_world.blocks.size() / 100, xSize = (int)target_world.blocks.size() / ySize, square = (int)target_world.blocks.size();
+										if (not door_id.empty()) {
+											for (int i_ = 0; i_ < target_world.blocks.size(); i_++) {
+												WorldBlock block_data = target_world.blocks[i_];
+												if (block_data.fg == 1684 or items[block_data.fg].blockType == BlockTypes::DOOR or items[block_data.fg].blockType == BlockTypes::PORTAL) {
+													if (block_data.door_id == door_id) {
+														spawn_x = i_ % xSize, spawn_y = i_ / xSize;
+														break;
 													}
 												}
 											}
-											PlayerMoving data_{};
-											data_.packetType = 32; // steam update paketas
-											data_.punchX = steam_connector.x;
-											data_.punchY = steam_connector.y;
-											BYTE* raw = packPlayerMoving(&data_);
-											raw[3] = scenario;
-											for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-												if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-												if (pInfo(peer)->world != pInfo(currentPeer)->world) continue;
-												send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
-											}
-											delete[] raw;
-											break;
-										}
-										default:
-											break;
 										}
 									}
-									PlayerMoving data_{};
-									data_.packetType = 32; // steam update paketas
-									data_.punchX = p_->punchX;
-									data_.punchY = p_->punchY;
-									BYTE* raw = packPlayerMoving(&data_);
-									for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
-										if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
-										if (pInfo(peer)->world != pInfo(currentPeer)->world) continue;
-										send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+									if (block_->fg == 762) {
+										pInfo(peer)->lastwrenchx = p_->punchX, pInfo(peer)->lastwrenchy = p_->punchY;
+										gamepacket_t p2;
+										if (block_->door_id == "") p2.Insert("OnTalkBubble"), p2.Insert(pInfo(peer)->netID), p2.Insert("No password has been set yet!"), p2.Insert(0), p2.Insert(1);
+										else p2.Insert("OnDialogRequest"), p2.Insert("set_default_color|`o\nadd_label_with_icon|big|`wPassword Door``|left|762|\nadd_textbox|The door requires a password.|left|\nadd_text_input|password|Password||24|\nend_dialog|password_reply|Cancel|OK|");
+										p2.CreatePacket(peer);
+										gamepacket_t p(250, pInfo(peer)->netID), p3(250), p4(250, pInfo(peer)->netID);
+										p.Insert("OnSetFreezeState"), p.Insert(1), p.CreatePacket(peer);
+										p3.Insert("OnZoomCamera"), p3.Insert((float)10000.000000), p3.Insert(1000), p3.CreatePacket(peer);
+										p4.Insert("OnSetFreezeState"), p4.Insert(0), p4.CreatePacket(peer);
 									}
-									delete[] raw;
-									break;
+									if (block_->fg != 762) join_world(peer, target_world.name, spawn_x, spawn_y, 250, locked, true);
 								}
-								default:
-									break;
+								else {
+									switch (block_->fg) {
+									case 3270: case 3496:
+									{
+										Position2D steam_connector = track_steam(world_, block_, p_->punchX, p_->punchY);
+										if (steam_connector.x != -1 and steam_connector.y != -1) {
+											WorldBlock* block_s = &world_->blocks[steam_connector.x + (steam_connector.y * 100)];
+											switch (block_s->fg) {
+											case 3286: //steam door
+											{
+												block_s->flags = (block_s->flags & 0x00400000 ? block_s->flags ^ 0x00400000 : block_s->flags | 0x00400000);
+												PlayerMoving data_{};
+												data_.packetType = 5, data_.punchX = steam_connector.x, data_.punchY = steam_connector.y, data_.characterState = 0x8;
+												BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_s));
+												BYTE* blc = raw + 56;
+												form_visual(blc, *block_s, *world_, peer, false);
+												for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+													if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+													if (pInfo(currentPeer)->world == world_->name) {
+														send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_s), ENET_PACKET_FLAG_RELIABLE);
+													}
+												}
+												delete[] raw, blc;
+												break;
+											}
+											case 3724: // spirit storage unit
+											{
+												uint32_t scenario = 20;
+												{
+													// check for ghost jars
+													for (int i = 0; i < world_->drop.size(); i++) {
+														WorldDrop* check_drop = &world_->drop[i];
+														Position2D dropped_at{ check_drop->x / 32, check_drop->y / 32 };
+														if (dropped_at.x == steam_connector.x and dropped_at.y == steam_connector.y) {
+															if (check_drop->id == 3722) {
+																uint32_t explo_chance = check_drop->count;
+																// remove drop
+																{
+																	PlayerMoving data_{};
+																	data_.packetType = 14, data_.netID = -2, data_.plantingTree = check_drop->uid;
+																	BYTE* raw = packPlayerMoving(&data_);
+																	int32_t item = -1;
+																	memcpy(raw + 8, &item, 4);
+																	for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																		if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																		if (pInfo(currentPeer)->world == name_) {
+																			send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+																		}
+																	}
+																	world_->drop[i].id = 0, world_->drop[i].x = -1, world_->drop[i].y = -1;
+																	delete[] raw;
+																}
+																block_s->c_ += explo_chance;
+																// explode or not
+																{
+																	if (block_s->c_ * 5 >= 105) {
+																		float explosion_chance = (float)((block_s->c_ * 5) - 100) * 0.5;
+																		if (explosion_chance > rand() % 100) {
+																			//bam bam
+																			block_s->fg = 3726;
+																			// drop the prize
+																			{
+																				vector<int> all_p{ 3734, 3732, 3748, 3712, 3706, 3708, 3718, 11136, 3728, 10056, 3730, 3788, 3750, 3738, 6060, 3738, 6840, 3736, 3750 };
+																				uint32_t prize = 0;
+																				if (block_s->c_ * 5 <= 115) prize = 3734;
+																				else if (block_s->c_ * 5 <= 130) prize = 3732;
+																				else if (block_s->c_ * 5 <= 140) prize = 3748;
+																				else if (block_s->c_ * 5 <= 170) {
+																					vector<int> p_drops = {
+																						3712, 3706, 3708, 3718, 11136
+																					};
+																					prize = p_drops[rand() % p_drops.size()];
+																				}
+																				else if (block_s->c_ * 5 <= 190)  prize = 3728;
+																				else if (block_s->c_ * 5 <= 205)  prize = 10056;
+																				else if (block_s->c_ * 5 <= 220)  prize = 3730;
+																				else if (block_s->c_ * 5 == 225)  prize = 3788;
+																				else if (block_s->c_ * 5 <= 240)  prize = 3750;
+																				else if (block_s->c_ * 5 == 245)  prize = 3738;
+																				else if (block_s->c_ * 5 <= 255)  prize = 6060;
+																				else if (block_s->c_ * 5 <= 265 or explo_chance * 5 >= 265) {
+																					if (explo_chance * 5 >= 265) prize = all_p[rand() % all_p.size()];
+																					else prize = 3738;
+																				}
+																				else {
+																					vector<int> p_drops = {
+																						6840
+																					};
+																					if (block_s->c_ * 5 >= 270) p_drops.push_back(3736);
+																					if (block_s->c_ * 5 >= 295) p_drops.push_back(3750);
+																					if (block_s->c_ * 5 >= 300) p_drops.push_back(6064);
+																					prize = p_drops[rand() % p_drops.size()];
+																				} if (prize != 0) {
+																					WorldDrop drop_block_{};
+																					drop_block_.x = steam_connector.x * 32 + rand() % 17;
+																					drop_block_.y = steam_connector.y * 32 + rand() % 17;
+																					drop_block_.id = prize, drop_block_.count = 1, drop_block_.uid = uint16_t(world_->drop.size()) + 1;
+																					dropas_(world_, drop_block_);
+																					{
+																						PlayerMoving data_{};
+																						data_.packetType = 0x11, data_.x = steam_connector.x * 32 + 16, data_.y = steam_connector.y * 32 + 16;
+																						data_.YSpeed = 97, data_.XSpeed = 3724;
+																						BYTE* raw = packPlayerMoving(&data_);
+																						PlayerMoving data_2{};
+																						data_2.packetType = 0x11, data_2.x = steam_connector.x * 32 + 16, data_2.y = steam_connector.y * 32 + 16;
+																						data_2.YSpeed = 108;
+																						BYTE* raw2 = packPlayerMoving(&data_2);
+																						gamepacket_t p;
+																						p.Insert("OnConsoleMessage");
+																						p.Insert("`#[A `9Spirit Storage Unit`` exploded, bringing forth an `9" + items[prize].name + "`` from The Other Side!]``");
+																						for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																							if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																							if (pInfo(currentPeer)->world == world_->name) {
+																								p.CreatePacket(currentPeer);
+																								send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+																								send_raw(currentPeer, 4, raw2, 56, ENET_PACKET_FLAG_RELIABLE);
+																							}
+																						}
+																						delete[] raw, raw2;
+																					}
+																					scenario = 22;
+																				}
+																			}
+																			block_s->c_ = 0;
+																		}
+																	}
+																}
+																// update visuals
+																{
+																	PlayerMoving data_{};
+																	data_.packetType = 5, data_.punchX = steam_connector.x, data_.punchY = steam_connector.y, data_.characterState = 0x8;
+																	BYTE* raw = packPlayerMoving(&data_, 112 + alloc_(world_, block_s));
+																	BYTE* blc = raw + 56;
+																	form_visual(blc, *block_s, *world_, peer, false);
+																	for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+																		if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+																		if (pInfo(currentPeer)->world == world_->name) {
+																			send_raw(currentPeer, 4, raw, 112 + alloc_(world_, block_s), ENET_PACKET_FLAG_RELIABLE);
+																		}
+																	}
+																	delete[] raw, blc;
+																}
+																break;
+															}
+														}
+													}
+												}
+												PlayerMoving data_{};
+												data_.packetType = 32; // steam update paketas
+												data_.punchX = steam_connector.x;
+												data_.punchY = steam_connector.y;
+												BYTE* raw = packPlayerMoving(&data_);
+												raw[3] = scenario;
+												for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+													if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+													if (pInfo(peer)->world != pInfo(currentPeer)->world) continue;
+													send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+												}
+												delete[] raw;
+												break;
+											}
+											default:
+												break;
+											}
+										}
+										PlayerMoving data_{};
+										data_.packetType = 32; // steam update paketas
+										data_.punchX = p_->punchX;
+										data_.punchY = p_->punchY;
+										BYTE* raw = packPlayerMoving(&data_);
+										for (ENetPeer* currentPeer = server->peers; currentPeer < &server->peers[server->peerCount]; ++currentPeer) {
+											if (currentPeer->state != ENET_PEER_STATE_CONNECTED or currentPeer->data == NULL) continue;
+											if (pInfo(peer)->world != pInfo(currentPeer)->world) continue;
+											send_raw(currentPeer, 4, raw, 56, ENET_PACKET_FLAG_RELIABLE);
+										}
+										delete[] raw;
+										break;
+									}
+									default:
+										break;
+									}
 								}
 							}
 						}
-						//catch (out_of_range& klaida) {
-							//cout << "case 7 klaida -> " << klaida.what() << endl;
-						//}
-					//}
+						catch (const out_of_range& e) {
+							hoshi_warn(e.what());
+						}
 						break;
 					}
 					case 10: /*Kai zaidejas paspaudzia du kartus ant inventory itemo*/
@@ -6852,15 +11549,13 @@ int main(int argc, char* argv[]) {
 						equip_clothes(peer, p_->plantingTree);
 						break;
 					}
-					case 11: /*Kai zaidejas paema isdropinta itema*/
+					case 11: /*Taking dropped items*/
 					{
 						if (p_->x < 0 || p_->y < 0) break;
-
 						int currentX = pInfo(peer)->x / 32;
 						int currentY = pInfo(peer)->y / 32;
 						int targetX = p_->x / 32;
 						int targetY = p_->y / 32;
-
 						if (abs(targetX - currentX) >= 2 || abs(targetY - currentY) >= 2)
 						{
 							if (currentX != 0 && currentY != 0)
@@ -6868,7 +11563,6 @@ int main(int argc, char* argv[]) {
 								break;
 							}
 						}
-
 						bool displaybox = true;
 						string name_ = pInfo(peer)->world;
 						vector<World>::iterator p = find_if(worlds.begin(), worlds.end(), [name_](const World& a) { return a.name == name_; });
@@ -6885,7 +11579,7 @@ int main(int argc, char* argv[]) {
 										if (pInfo(peer)->superdev || world_->owner_name == pInfo(peer)->tankIDName || find(world_->admins.begin(), world_->admins.end(), pInfo(peer)->tankIDName) != world_->admins.end()) displaybox = true;
 									}
 									else {
-										noclip = ar_turi_noclipa(world_, p_->x, p_->y, world_->drop[i_].x / 32 + (world_->drop[i_].y / 32 * 100), peer);
+										noclip = patchNoClip(world_, pInfo(peer)->x, pInfo(peer)->y, block_, peer);
 									}
 									if (displaybox && noclip == false) {
 										int c_ = world_->drop[i_].count;
@@ -6983,7 +11677,7 @@ int main(int argc, char* argv[]) {
 						move_(peer, p_);
 						break;
 					}
-					case 23: /*Kai zaidejas papunchina kita*/
+					case 23: /*TO DO KILL PLAYER QUEST*/
 					{
 						if (pInfo(peer)->last_inf + 5000 < (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count()) {
 							pInfo(peer)->last_inf = (duration_cast<milliseconds>(system_clock::now().time_since_epoch())).count();
@@ -7068,24 +11762,6 @@ int main(int argc, char* argv[]) {
 					break;
 				}
 				enet_event_destroy(event);
-				break;
-			}
-			case ENET_EVENT_TYPE_DISCONNECT:
-			{
-				if (saving_) break;
-				if (peer->data != NULL) {
-					if (pInfo(peer)->trading_with != -1) cancel_trade(peer, false);
-					if (not pInfo(peer)->world.empty()) exit_(peer, true);
-					if (not pInfo(peer)->invalid_data) {
-						save_player(pInfo(peer), (f_saving_ ? false : true));
-					}
-					if (f_saving_) pInfo(peer)->saved_on_close = true;
-					if (not f_saving_) {
-						enet_host_flush(server);
-						delete peer->data;
-						peer->data = NULL;
-					}
-				}
 				break;
 			}
 			default:
